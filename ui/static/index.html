@@ -1,0 +1,178 @@
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Worm control</title>
+		<link rel="stylesheet" href="/static/jquery-ui-1.11.4/jquery-ui.css">
+		<script src="/static/jquery-1.11.3.min.js"></script>
+		<script src="/static/jquery-ui-1.11.4/jquery-ui.min.js"></script>
+		<script type="text/javascript">
+
+function MotorControl(parent, channel, vmin, vmid, vmax, value) {
+	
+	var obj = {Channel: channel,
+
+				inValueChange: false,
+
+	           AngleToValue: function() {
+					if(!this.inValueChange) {
+						angle = parseFloat(this.angle_input.val())
+						this.inValueChange = true
+						this.slider.slider('value', angle);
+						this.inValueChange = false
+
+						this.SendAngle(function(data){
+							obj.value_input.val(data["value"])
+						})
+					}
+	           },
+
+	           ValueToAngle: function() {
+					value = parseFloat(this.value_input.val())
+					vmid = parseFloat(this.mid_input.val())
+					if (value >= vmid) {
+						vmax = parseFloat(this.max_input.val())
+						angle = 90 * (value - vmid) / (vmax-vmid)
+					} else {
+						vmin = parseFloat(this.min_input.val())
+						angle = -90 * (vmid - value) / (vmid - vmin)
+					}
+					this.inValueChange = true
+					this.slider.slider('value', angle);
+					this.inValueChange = false
+	            },
+
+	            SendValue: function() {
+					value = parseFloat(this.value_input.val())
+					$.getJSON( "/setservovalue/" + this.Channel + "/" + value,
+					  function( data ) {})
+				},
+
+	            SendAngle: function(callback) {
+					angle = parseFloat(this.angle_input.val())
+					$.getJSON( "/setservoangle/" + this.Channel + "/" + angle,
+					  callback)
+				},
+
+				SendParams: function() {
+					vmin = parseFloat(this.min_input.val())
+					vmid = parseFloat(this.mid_input.val())
+					vmax = parseFloat(this.max_input.val())
+					$.getJSON( "/setservoparams/" + this.Channel + "/" + vmin + "/" + vmid + "/" + vmax,
+					  function(){})
+				}
+		}
+	
+	top_row = $("<tr/>").appendTo($("<table/>").appendTo(parent))
+	obj.slider = $("<div/>").css("height", "200px")
+	                        .appendTo($("<td/>").appendTo(top_row))
+	mtd = $("<td/>").appendTo(top_row)
+	                .append($("<h3/>").css("text-align", "center")
+	                                  .text("Channel " + channel))
+	param_t = $("<table/>").appendTo(mtd)
+
+	angle_row = $("<tr/>").appendTo(param_t)
+	                      .append($("<td/>").text("Angle"))
+	obj.angle_input = $("<input/>").appendTo($("<td/>").appendTo(angle_row))
+	                           .attr("size", 4)
+	$("<button/>").appendTo($("<td/>").appendTo(angle_row))
+	              .text("Set")
+	              .click(function(){
+					  obj.AngleToValue()
+	               })
+
+	value_row = $("<tr/>").appendTo(param_t)
+	                      .append($("<td/>").text("Value"))
+	obj.value_input = $("<input/>").appendTo($("<td/>").appendTo(value_row))
+	                           .attr("size", 4)
+	                           .val(value)
+	$("<button/>").appendTo($("<td/>").appendTo(value_row))
+	              .text("Set")
+	              .click(function(){
+					  obj.ValueToAngle()
+					  obj.SendValue()
+	               })
+
+	max_row = $("<tr/>").appendTo(param_t)
+	                      .append($("<td/>").text("+90"))
+	obj.max_input = $("<input/>").appendTo($("<td/>").appendTo(max_row))
+	                           .attr("size", 4)
+	                           .val(vmax)
+	$("<button/>").appendTo($("<td/>").appendTo(max_row))
+	              .text("Set")
+	              .click(function(){
+					  obj.ValueToAngle()
+					  obj.SendParams()
+	               })
+
+	mid_row = $("<tr/>").appendTo(param_t)
+	                      .append($("<td/>").text("0"))
+	obj.mid_input = $("<input/>").appendTo($("<td/>").appendTo(mid_row))
+	                           .attr("size", 4)
+	                           .val(vmid)
+	$("<button/>").appendTo($("<td/>").appendTo(mid_row))
+	              .text("Set")
+	              .click(function(){
+					  obj.ValueToAngle()
+					  obj.SendParams()
+	               })
+
+	min_row = $("<tr/>").appendTo(param_t)
+	                      .append($("<td/>").text("-90"))
+	obj.min_input = $("<input/>").appendTo($("<td/>").appendTo(min_row))
+	                           .attr("size", 4)
+	                           .val(vmin)
+	$("<button/>").appendTo($("<td/>").appendTo(min_row))
+	              .text("Set")
+	              .click(function(){
+					  obj.ValueToAngle()
+					  obj.SendParams()
+	               })
+	
+	obj.turn_button = $("<button/>").appendTo($("<p>").appendTo(mtd)
+	                                              .css("text-align","center"))
+	                            .text("ON")
+	                            .css("width", "120px")
+
+	obj.slider.slider({orientation: "vertical",
+	                           min: -90,
+	                           max: 90,
+	                         value: 0,
+	                        change: function( event, ui ) {
+										obj.angle_input.val(ui.value)
+										obj.AngleToValue()
+									}
+	})
+
+	obj.ValueToAngle()
+
+	return obj
+}
+
+
+
+$(function() {
+	$.getJSON( "/getservos" ,function( data ) {
+		$.each(data, function(i, channel){
+			parent = $("<td/>").appendTo("#motors")
+			MotorControl(parent,
+			             channel.channel,
+			             channel.min,
+			             channel.mid,
+			             channel.max,
+			             channel.value)
+		})
+	});
+})
+
+$(document).ready(function() {
+})
+		</script>
+	</head>
+	<body>
+		<h1>Worm control</h1>
+		<table>
+			<tr id="motors">
+			</tr>
+		</table>
+	</body>
+</html>

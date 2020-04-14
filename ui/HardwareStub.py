@@ -1,0 +1,83 @@
+
+class ServoMotor(object):
+	def __init__(self, logger, params, prefix):
+		self.Logger = logger
+		self.prefix = prefix
+		
+		self.Min = int(params[prefix + ".min"])
+		self.Mid = int(params[prefix + ".mid"])
+		self.Max = int(params[prefix + ".max"])
+
+		self.Angle = 0
+
+	def getValue(self):
+		if self.Angle >= 90:
+			return int(self.Mid + (self.Max - self.Mid) * self.Angle / 90.0)
+		else:
+			return int(self.Mid + (self.Mid - self.Min) * self.Angle / 90.0)
+
+	def setAngle(self, angle):
+		self.Angle = angle
+		value = self.getValue()
+		self.setValue(value)
+		return value
+
+	def setValue(self, value):
+		self.Logger.debug("set %s" % (value))
+
+	def setParams(self, vmin, vmid, vmax):
+		self.Min = int(vmin)
+		self.Mid = int(vmid)
+		self.Max = int(vmax)
+
+	def exportParams(self, params):
+		params[self.prefix + ".min"] = self.Min
+		params[self.prefix + ".mid"] = self.Mid
+		params[self.prefix + ".max"] = self.Max
+
+class HardwareStub(object):
+	def __init__(self, logger, config_file):
+		self.Logger = logger
+		self.ConfigFile = config_file
+		
+		self.loadParams()
+		
+		self.Servos = []
+		for s in range(100):
+			prefix = "hardware.servos.%d" % s
+			if prefix + ".min" in self.params:
+				self.Servos.append(ServoMotor(self.Logger, self.params, prefix))
+
+	def loadParams(self):
+		self.params = myprops = dict(line.strip().split('=') for line in open(self.ConfigFile))
+
+	def saveParams(self):
+		with open(self.ConfigFile, "w") as f:
+			keys = self.params.keys()
+			keys.sort()
+			for k in keys:
+				f.write("%s=%s\n" % (k,str(self.params[k])))
+
+	def getServos(self):
+		result = []
+		for i in range(len(self.Servos)):
+			servo = self.Servos[i]
+			result.append({"channel": i,
+			               "min": servo.Min,
+			               "mid": servo.Mid,
+			               "max": servo.Max,
+			               "value":servo.getValue()})
+		return result
+
+	def setServoValue(self, servo, value):
+		self.Servos[int(servo)].setValue(int(value))
+
+	def setServoAngle(self, servo, angle):
+		return self.Servos[int(servo)].setAngle(float(angle))
+
+	def setServoParams(self, servo, vmin, vmid, vmax):
+		sr = self.Servos[int(servo)]
+		sr.setParams(vmin, vmid, vmax)
+		sr.exportParams(self.params)
+		self.saveParams()
+
