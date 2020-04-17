@@ -49,7 +49,7 @@ class HardwareStub(object):
 				self.Servos.append(ServoMotor(self.Logger, self.params, prefix))
 
 	def loadParams(self):
-		self.params = myprops = dict(line.strip().split('=') for line in open(self.ConfigFile))
+		self.params = dict(line.strip().split('=') for line in open(self.ConfigFile))
 
 	def saveParams(self):
 		with open(self.ConfigFile, "w") as f:
@@ -81,3 +81,25 @@ class HardwareStub(object):
 		sr.exportParams(self.params)
 		self.saveParams()
 
+	def getWormSteps(self):
+		steps = []
+		step = 0
+		while True:
+			stepProp = "worm.steps.%d." % step
+			if stepProp + "0" in self.params:
+				steps.append([self.params[stepProp + "0"],
+							  self.params[stepProp + "1"],
+							  self.params[stepProp + "2"],
+							  self.params[stepProp + "3"]])
+			else:
+				break
+			step += 1
+		return steps
+
+	def wormMoveToStep(self, step):
+		angles = []
+		for i in range(4):
+			angle = self.params["worm.steps.%s.%d" % (step, i)]
+			angles.append(angle)
+			self.setServoAngle(i, angle)
+		return angles

@@ -39,6 +39,34 @@ def set_servo_params(servo, vmin, vmid, vmax):
 	response = {"servo": servo}
 	return Response(json.dumps(response), content_type='text/plain; charset=utf-8')
 
+@app.route('/worm/steps')
+def get_worm_steps():
+	steps = g_Hardware.getWormSteps()
+	return Response(json.dumps(steps), content_type='text/plain; charset=utf-8')
+
+@app.route('/worm/moveto/<step>')
+def worm_moveto(step):
+	result = g_Hardware.wormMoveToStep(step)
+	return Response(json.dumps(result), content_type='text/plain; charset=utf-8')
+
+@app.route('/worm/setstate/<state>')
+def worm_set_state(state):
+	states = {"stop": g_Hardware.wormStop,
+			  "forward": g_Hardware.wormMoveForward,
+			  "backward": g_Hardware.wormMoveBackward}
+	if state in states:
+		states[state]()
+		result = {"stats":"OK"}
+	else:
+		result = {"stats":"INCORRECT STATE"}
+	return Response(json.dumps(result), content_type='text/plain; charset=utf-8')
+
+@app.route('/worm/setrate/<rate>')
+def worm_set_rate(rate):
+	g_Hardware.wormSetPauseRate(rate)
+	result = {"stats":"OK"}
+	return Response(json.dumps(result), content_type='text/plain; charset=utf-8')
+
 if __name__ == "__main__":
 	if len(sys.argv) >= 2 and sys.argv[1] == "stub":
 		from HardwareStub import HardwareStub

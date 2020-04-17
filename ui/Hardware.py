@@ -13,9 +13,19 @@ class TServo(Structure):
 		self.mid = int(vmid)
 		self.max = int(vmax)
 
+class TWormStep(Structure):
+	_fields_ = [("motors", c_float * 4)]
+
 class TServoControl(Structure):
-	_fields_ = [("servos", TServo * 16),
-				("hardware", c_void_p)]
+	_fields_ = [("hardware", c_void_p),
+				("runtime_thread", c_void_p),
+				("runtime_state", c_int),
+				("runtime_pause", c_float),
+				("servos", TServo * 16),
+				("numSteps", c_int),
+				("currentStep", c_int),
+				("pause_rate", c_float),
+				("steps", TWormStep * 50)]
 
 	def __init__(self, module, params):
 		self.module = module
@@ -24,6 +34,13 @@ class TServoControl(Structure):
 		self.module.setServoValue.argtypes = [POINTER(TServoControl), c_int, c_int]
 		self.module.setServoAngle.argtypes = [POINTER(TServoControl), c_int, c_float]
 		self.module.setServoAngle.restype  = c_int
+		self.module.moveToStep.argtypes = [POINTER(TServoControl), c_int]
+		self.module.moveToStep.restype  = c_float
+		self.module.initRuntime.argtypes = [POINTER(TServoControl)]
+		self.module.initRuntime.restype  = c_int
+		self.module.stopRuntime.argtypes = [POINTER(TServoControl)]
+		self.module.stopRuntime.restype  = c_int
+
 
 		self.active = []
 		for s in range(16):
@@ -34,10 +51,27 @@ class TServoControl(Structure):
 				                         params[param + ".max"])
 				self.active.append(s)
 
+		step = 0
+		while True:
+			stepProp = "worm.steps.%d." % step
+			if stepProp + "0" in params:
+				for m in range(4):
+					self.steps[step].motors[m] = float(params[stepProp + str(m)])
+			else:
+				break
+			step += 1
+		self.numSteps = step
+
+		if "worm.pauseRate" in params:
+			self.pause_rate = float(params["worm.pauseRate"])
+
 		status = self.module.initServos(byref(self))
 		if status != 0:
-			raise Exception("status=%d" % status)
+			raise Exception("servo status=%d" % status)
 
+		status = self.module.initRuntime(byref(self))
+		if status != 0:
+			raise Exception("runtime status=%d" % status)
 
 	def setValue(self, servo, value):
 		self.module.setServoValue(byref(self), int(servo), int(value))
@@ -56,6 +90,17 @@ class TServoControl(Structure):
 			params[param + ".min"] = self.servos[s].min
 			params[param + ".mid"] = self.servos[s].mid
 			params[param + ".max"] = self.servos[s].max
+		params["worm.pauseRate"] = self.pause_rate
+
+	def movetoStep(self, step):
+		return self.module.moveToStep(byref(self), int(step))
+
+	def setState(self, state):
+		self.runtime_state = int(state)
+
+	def setRate(self, rate):
+		self.pause_rate = float(rate)
+
 
 class Hardware(HardwareStub):
 	def __init__(self, logger, config_file):
@@ -77,3 +122,18 @@ class Hardware(HardwareStub):
 		self.ServoControl.setParams(servo, vmin, vmid, vmax)
 		self.ServoControl.exportParams(self.params)
 		self.saveParams()
+
+	def wormMoveToStep(self, step):
+		return self.ServoControl.movetoStep(step)
+
+	def wormStop(self):
+		self.ServoControl.setState(1)
+
+	def wormMoveForward(self):
+		self.ServoControl.setState(2)
+
+	def wormMoveBackward(self):
+		self.ServoControl.setState(3)
+
+	def wormSetPauseRate(self, rate):
+		self.ServoControl.setRate(rate)

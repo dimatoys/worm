@@ -148,7 +148,35 @@ function MotorControl(parent, channel, vmin, vmid, vmax, value) {
 	return obj
 }
 
+function StepsControl(parent) {
+	
+	var sc = {steps: 0}
+	
+	parent.html("")
+	$.getJSON( "worm/steps", function(data) {
+		table = $("<table/>").appendTo(parent)
+		sc.steps = 0
+		$.each(data, function(i, step){
+			var tr = $("<tr/>").appendTo(table)
+			$("<td/>").text(i).appendTo(tr)
+			$.each(step, function(j, motor){
+				$("<input/>").val(motor)
+							.appendTo($("<td/>").appendTo(tr))
+			})
+			$("<button/>").text("Move to")
+						  .appendTo($("<td/>").appendTo(tr))
+						  .click(function(){
+							$.getJSON( "worm/moveto/" + i, function(data) {})
+						  })
+			sc.steps++;
+		})
+		$("#totalSteps").text(sc.steps)
+	})
 
+	return sc
+}
+
+var stepsControl = undefined
 
 $(function() {
 	$.getJSON( "/getservos" ,function( data ) {
@@ -162,6 +190,34 @@ $(function() {
 			             channel.value)
 		})
 	});
+	stepsControl = StepsControl($("#steps"))
+	$("#step").text(nextStep)
+
+	$("#nextStep").click(function(){
+		$.getJSON( "/worm/moveto/" + $("#step").val(), function(data) {
+			nextStep = parseInt($("#step").val())  + 1
+			if (nextStep >= stepsControl.steps) {
+				nextStep = 0
+			}
+			$("#step").val(nextStep)
+		})
+	})
+
+	$("#worm_stop").click(function(){
+		$.getJSON( "/worm/setstate/stop", function(data) {})
+	})
+
+	$("#worm_forward").click(function(){
+		$.getJSON( "/worm/setstate/forward", function(data) {})
+	})
+
+	$("#worm_backward").click(function(){
+		$.getJSON( "/worm/setstate/backward", function(data) {})
+	})
+
+	$("#worm_update_pause_rate").click(function(){
+		$.getJSON( "/worm/setrate/" + $("#worm_pause_rate").val(), function(data) {})
+	})
 })
 
 $(document).ready(function() {
@@ -174,5 +230,25 @@ $(document).ready(function() {
 			<tr id="motors">
 			</tr>
 		</table>
+		<h2>Steps</h2>
+		<table>
+			<tr>
+				<td>
+					<button id="nextStep">Next</button>
+					<input id="step" value="0">/
+					<span id="totalSteps">-</span>
+				</td>
+			</tr>
+			<tr>
+				<td>
+					<button id="worm_stop">STOP</button>
+					<button id="worm_forward">FORWARD</button>
+					<button id="worm_backward">BACKWARD</button>
+					<input id="worm_pause_rate" value="0.002">
+					<button id="worm_update_pause_rate">UPDATE PAUSE RATE</button>
+				</td>
+			</tr>
+		<table>
+		<div id="steps"></div>
 	</body>
 </html>
