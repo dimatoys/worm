@@ -67,6 +67,21 @@ def worm_set_rate(rate):
 	result = {"stats":"OK"}
 	return Response(json.dumps(result), content_type='text/plain; charset=utf-8')
 
+@app.route('/worm/mouth/<state>')
+def worm_mouth(state):
+	states ={'open':1, 'close':0}
+	if state in states:
+		g_Hardwaew.wormSetMouthState(states[state])
+		result = "OK"
+	else:
+		result = "NotSuchState"
+	return Response(json.dumps({"status":result}), content_type='text/plain; charset=utf-8')
+
+@app.route('/worm/control/<id>/<value>')
+def worm_control(id, value):
+	result = g_Hardware.wormControl(id, value)
+	return Response(json.dumps({"status":result}), content_type='text/plain; charset=utf-8')
+
 if __name__ == "__main__":
 	if len(sys.argv) >= 2 and sys.argv[1] == "stub":
 		from HardwareStub import HardwareStub

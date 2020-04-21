@@ -40,6 +40,8 @@ class TServoControl(Structure):
 		self.module.initRuntime.restype  = c_int
 		self.module.stopRuntime.argtypes = [POINTER(TServoControl)]
 		self.module.stopRuntime.restype  = c_int
+		self.module.wormControl.argtypes = [POINTER(TServoControl), c_int, c_float]
+		self.module.wormControl.restype  = c_int
 
 
 		self.active = []
@@ -69,9 +71,11 @@ class TServoControl(Structure):
 		if status != 0:
 			raise Exception("servo status=%d" % status)
 
+		"""
 		status = self.module.initRuntime(byref(self))
 		if status != 0:
 			raise Exception("runtime status=%d" % status)
+		"""
 
 	def setValue(self, servo, value):
 		self.module.setServoValue(byref(self), int(servo), int(value))
@@ -101,6 +105,12 @@ class TServoControl(Structure):
 	def setRate(self, rate):
 		self.pause_rate = float(rate)
 
+	def wormControl(self, id, value):
+		ids = {"step2": 1}
+		if id in ids:
+			return self.module.wormControl(byref(self), ids[id], float(value))
+		else:
+			return -1
 
 class Hardware(HardwareStub):
 	def __init__(self, logger, config_file):
@@ -137,3 +147,7 @@ class Hardware(HardwareStub):
 
 	def wormSetPauseRate(self, rate):
 		self.ServoControl.setRate(rate)
+
+	def wormControl(self, id, value):
+		return self.ServoControl.wormControl(id, value)
+

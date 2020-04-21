@@ -11,6 +11,8 @@ const int RUNTIME_STATE_MOVE_BACKWARD = 3;
 const float RUNTIME_DEFAULT_IDLE_PAUSE = 0.99;
 const float DEFAULT_PAUSE_RATE = 0.002;
 
+#define CONTROL_STEP2 1
+
 struct TServo {
 	int		min;
 	int		mid;
@@ -42,4 +44,6 @@ float moveToStep(TServoControl* control, int step);
 
 int initRuntime(TServoControl* control);
 int stopRuntime(TServoControl* control);
+
+int wormControl(TServoControl* control, int id, float value);
 }

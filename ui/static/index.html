@@ -176,6 +176,34 @@ function StepsControl(parent) {
 	return sc
 }
 
+function AngleControl(parent, vmin, vmax, getUrl) {
+	obj = {
+		SendValue: function(){
+			$.getJSON( getUrl(obj.value.val()), function(data) {})
+		}
+	}
+
+	obj.slider = $("<div/>").css("width", "200px").appendTo(parent)
+	obj.value  = $("<input/>").appendTo(parent)
+	obj.button = $("<button/>").html("Set")
+							   .appendTo(parent)
+	                           .click(function(){
+									obj.slider.slider('value', obj.value.val());
+								})
+	
+	obj.slider.slider({orientation: "horizontal",
+	                           min: vmin,
+	                           max: vmax,
+	                         value: (vmin + vmax) / 2,
+	                        change: function( event, ui ) {
+										obj.value.val(ui.value)
+										obj.SendValue()
+									}
+	})
+	                        
+	return obj
+}
+
 var stepsControl = undefined
 
 $(function() {
@@ -218,6 +246,16 @@ $(function() {
 	$("#worm_update_pause_rate").click(function(){
 		$.getJSON( "/worm/setrate/" + $("#worm_pause_rate").val(), function(data) {})
 	})
+
+	$("#worm_mouth_open").click(function(){
+		$.getJSON( "/worm/mouth/open", function(data) {})
+	})
+
+	$("#worm_mouth_close").click(function(){
+		$.getJSON( "/worm/mouth/close", function(data) {})
+	})
+
+	AngleControl($("#control_step2"), 0, 61, function(value){ return "/worm/control/step2/" + value})
 })
 
 $(document).ready(function() {
@@ -231,21 +269,34 @@ $(document).ready(function() {
 			</tr>
 		</table>
 		<h2>Steps</h2>
-		<table>
+		<table border=2>
 			<tr>
+				<td>Mouth control</td>
 				<td>
-					<button id="nextStep">Next</button>
-					<input id="step" value="0">/
-					<span id="totalSteps">-</span>
+					<button id="worm_mouth_open">OPEN</button>
+					<button id="worm_mouth_close">CLOSE</button>
 				</td>
 			</tr>
 			<tr>
+				<td>Step2 control</tdtd>
+				<td id="control_step2"></td>
+			</tr>
+			<tr>
+				<td>Movement control</tdtd>
 				<td>
 					<button id="worm_stop">STOP</button>
 					<button id="worm_forward">FORWARD</button>
 					<button id="worm_backward">BACKWARD</button>
 					<input id="worm_pause_rate" value="0.002">
 					<button id="worm_update_pause_rate">UPDATE PAUSE RATE</button>
+				</td>
+			</tr>
+			<tr>
+				<td>Steps control</tdtd>
+				<td>
+					<button id="nextStep">Next</button>
+					<input id="step" value="0">/
+					<span id="totalSteps">-</span>
 				</td>
 			</tr>
 		<table>

@@ -145,3 +145,16 @@ int stopRuntime(TServoControl* control) {
 	}
 }
 
+int wormControl(TServoControl* control, int id, float value) {
+	switch(id) {
+	case CONTROL_STEP2:
+		printf("Worm control step2: %f\n", value);
+		setServoAngle(control, 4, (-0.01384797 * value + 1.77989021) * value + 2.23198502);
+		setServoAngle(control, 5, (0.0204035 * value + (-2.63133776)) * value + (-4.19217714));
+		break;
+	default:
+		printf("Worm control: unknow control id=%d\n", id);
+	}
+	return 0;
+}
+
