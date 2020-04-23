@@ -82,6 +82,11 @@ def worm_control(id, value):
 	result = g_Hardware.wormControl(id, value)
 	return Response(json.dumps({"status":result}), content_type='text/plain; charset=utf-8')
 
+@app.route('/worm/getcontrolstates')
+def worm_get_control_states():
+	states = g_Hardware.wormGetStates()
+	return Response(json.dumps(states), content_type='text/plain; charset=utf-8')
+
 if __name__ == "__main__":
 	if len(sys.argv) >= 2 and sys.argv[1] == "stub":
 		from HardwareStub import HardwareStub

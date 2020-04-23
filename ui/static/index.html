@@ -45,12 +45,18 @@ function MotorControl(parent, channel, vmin, vmid, vmax, value) {
 					value = parseFloat(this.value_input.val())
 					$.getJSON( "/setservovalue/" + this.Channel + "/" + value,
 					  function( data ) {})
+					if (value == 0) {
+						obj.turn_button.text("ON")
+					} else {
+						obj.turn_button.text("OFF")
+					}
 				},
 
 	            SendAngle: function(callback) {
 					angle = parseFloat(this.angle_input.val())
 					$.getJSON( "/setservoangle/" + this.Channel + "/" + angle,
 					  callback)
+					obj.turn_button.text("OFF")
 				},
 
 				SendParams: function() {
@@ -132,6 +138,10 @@ function MotorControl(parent, channel, vmin, vmid, vmax, value) {
 	                                              .css("text-align","center"))
 	                            .text("ON")
 	                            .css("width", "120px")
+	                            .click(function(){
+									obj.value_input.val(0)
+									obj.SendValue()
+								})
 
 	obj.slider.slider({orientation: "vertical",
 	                           min: -90,
@@ -176,25 +186,25 @@ function StepsControl(parent) {
 	return sc
 }
 
-function AngleControl(parent, vmin, vmax, getUrl) {
-	obj = {
+function AngleControl(parent, vmin, vmax, vdef, getUrl) {
+	var obj = {
 		SendValue: function(){
 			$.getJSON( getUrl(obj.value.val()), function(data) {})
 		}
 	}
 
 	obj.slider = $("<div/>").css("width", "200px").appendTo(parent)
-	obj.value  = $("<input/>").appendTo(parent)
+	obj.value  = $("<input/>").val(vdef).appendTo(parent)
 	obj.button = $("<button/>").html("Set")
 							   .appendTo(parent)
 	                           .click(function(){
 									obj.slider.slider('value', obj.value.val());
 								})
-	
+
 	obj.slider.slider({orientation: "horizontal",
-	                           min: vmin,
-	                           max: vmax,
-	                         value: (vmin + vmax) / 2,
+	                           min: parseFloat(vmin),
+	                           max: parseFloat(vmax),
+	                         value: parseFloat(vdef),
 	                        change: function( event, ui ) {
 										obj.value.val(ui.value)
 										obj.SendValue()
@@ -255,7 +265,15 @@ $(function() {
 		$.getJSON( "/worm/mouth/close", function(data) {})
 	})
 
-	AngleControl($("#control_step2"), 0, 61, function(value){ return "/worm/control/step2/" + value})
+	$.getJSON( "/worm/getcontrolstates" ,function( data ) {
+		$.each(data, function(id, step){
+			var name = step.name
+			tr = $("<tr/>").appendTo("#control_states")
+			               .append($("<td/>").text(name))
+			parent = $("<td/>").appendTo(tr)
+			AngleControl(parent, step.min,  step.max, step.init, function(value){ return "/worm/control/" + name + "/" + value})
+		})
+	})
 })
 
 $(document).ready(function() {
@@ -278,10 +296,6 @@ $(document).ready(function() {
 				</td>
 			</tr>
 			<tr>
-				<td>Step2 control</tdtd>
-				<td id="control_step2"></td>
-			</tr>
-			<tr>
 				<td>Movement control</tdtd>
 				<td>
 					<button id="worm_stop">STOP</button>
@@ -300,6 +314,7 @@ $(document).ready(function() {
 				</td>
 			</tr>
 		<table>
+		<table id="control_states" border=2></table>
 		<div id="steps"></div>
 	</body>
 </html>

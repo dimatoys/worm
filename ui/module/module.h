@@ -1,7 +1,9 @@
 extern "C" {
 
-#define MAX_STEPS 50
+#define MAX_STEPS  50
 #define NUM_MOTORS 4
+#define NUM_STATES 30
+#define NUM_POLY   50
 
 const int RUNTIME_STATE_EXIT = 0;
 const int RUNTIME_STATE_IDLE = 1;
@@ -12,6 +14,7 @@ const float RUNTIME_DEFAULT_IDLE_PAUSE = 0.99;
 const float DEFAULT_PAUSE_RATE = 0.002;
 
 #define CONTROL_STEP2 1
+#define CONTROL_STEP3 2
 
 struct TServo {
 	int		min;
@@ -25,6 +28,17 @@ struct TWormStep {
 	float	motors[NUM_MOTORS];
 };
 
+struct TPoly4 {
+	int servo;
+	int s;
+	float	k[4];
+};
+
+struct TState {
+	int num;
+	int servoPoly[7];
+};
+
 struct TServoControl {
 	void*		hardware;
 	void*		runtime_thread;
@@ -34,6 +48,8 @@ struct TServoControl {
 	int			numSteps;
 	int			currentStep;
 	float		pause_rate;
+	TState		states[NUM_STATES];
+	TPoly4		poly[NUM_POLY];
 	TWormStep	steps[MAX_STEPS];
 };
 

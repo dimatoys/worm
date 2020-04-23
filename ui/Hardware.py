@@ -1,5 +1,7 @@
 from ctypes import *
 from HardwareStub import HardwareStub
+import copy
+import re
 
 class TServo(Structure):
 	_fields_ = [("min", c_int),
@@ -16,6 +18,28 @@ class TServo(Structure):
 class TWormStep(Structure):
 	_fields_ = [("motors", c_float * 4)]
 
+class TPoly4(Structure):
+	_fields_ = [("servo", c_int),
+	            ("s", c_int),
+	            ("k", c_float * 4)]
+
+	def load(self, params, prefix):
+		servoKey = "%s.servo" % prefix
+		if servoKey in params:
+			self.servo = int(params[servoKey])
+			for i in range(4):
+				key = "%s.%d" % (prefix, i)
+				if key in params:
+					self.k[i] = float(params[key])
+				else:
+					self.s = i
+					return
+			self.s = 4
+
+class TState(Structure):
+	_fields_ = [("num", c_int),
+				("servoPoly", c_int * 7)]
+
 class TServoControl(Structure):
 	_fields_ = [("hardware", c_void_p),
 				("runtime_thread", c_void_p),
@@ -25,9 +49,13 @@ class TServoControl(Structure):
 				("numSteps", c_int),
 				("currentStep", c_int),
 				("pause_rate", c_float),
+				("states", TState * 30),
+				("poly", TPoly4 * 50),
 				("steps", TWormStep * 50)]
 
-	def __init__(self, module, params):
+	def __init__(self, module, params, logger):
+		self.Logger = logger
+		
 		self.module = module
 		self.module.initServos.argtypes = [POINTER(TServoControl)]
 		self.module.initServos.restype  = c_int
@@ -66,6 +94,19 @@ class TServoControl(Structure):
 
 		if "worm.pauseRate" in params:
 			self.pause_rate = float(params["worm.pauseRate"])
+
+		self.NumPoly = 0
+		self.NumStates = 0
+		self.stateMap = {}
+		pattern = re.compile("worm\\.state\\.(\w+)\\.")
+		keys = list(params.keys())
+		keys.sort()
+		for key in keys:
+			m = pattern.match(key)
+			if m is not None:
+				if m.group(1) not in self.stateMap:
+					print(m.group(1))
+					self.loadState(params, m.group(1))
 
 		status = self.module.initServos(byref(self))
 		if status != 0:
@@ -106,11 +147,28 @@ class TServoControl(Structure):
 		self.pause_rate = float(rate)
 
 	def wormControl(self, id, value):
-		ids = {"step2": 1}
-		if id in ids:
-			return self.module.wormControl(byref(self), ids[id], float(value))
+		if id in self.stateMap:
+			return self.module.wormControl(byref(self), self.stateMap[id]["id"], float(value))
 		else:
 			return -1
+
+	def loadState(self, params, stateId):
+		for stateMuscles in range(20):
+			prefix = "worm.state.%s.poly.%c" % (stateId, ord('a') + stateMuscles)
+			if prefix + ".servo" in params:
+				self.poly[self.NumPoly].load(params, prefix)
+				self.states[self.NumStates].servoPoly[stateMuscles] = self.NumPoly
+				self.NumPoly += 1
+			else:
+				self.states[self.NumStates].num = stateMuscles
+				self.stateMap[stateId] = {"id": self.NumStates,
+										  "min": params["worm.state.%s.min" % stateId],
+										  "max": params["worm.state.%s.max" % stateId],
+										  "init": params["worm.state.%s.init" % stateId]}
+				self.NumStates += 1
+				break
+
+
 
 class Hardware(HardwareStub):
 	def __init__(self, logger, config_file):
@@ -119,7 +177,7 @@ class Hardware(HardwareStub):
 
 		self.loadParams()
 
-		self.ServoControl = TServoControl(self.module, self.params)
+		self.ServoControl = TServoControl(self.module, self.params, logger)
 
 	def setServoValue(self, servo, value):
 		self.ServoControl.setValue(servo, value)
@@ -150,4 +208,13 @@ class Hardware(HardwareStub):
 
 	def wormControl(self, id, value):
 		return self.ServoControl.wormControl(id, value)
+
+	def wormGetStates(self):
+		result = []
+		for s,p in self.ServoControl.stateMap.items():
+			np = copy.deepcopy(p)
+			np["name"] = s
+			result.append(np)
+		result.sort(key=lambda x: x["id"])
+		return result
 

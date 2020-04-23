@@ -57,6 +57,21 @@ int setServoAngle(TServoControl* control, int servo, float angle) {
 	return srec->value;
 }
 
+void setMuscleValue(TServoControl* control, int i, float value) {
+	float sv = 0;
+	for (int j = control->poly[i].s - 1; j >= 0 ; --j) {
+		sv = sv * value + control->poly[i].k[j];
+	}
+	printf("set %d angle %f\n", control->poly[i].servo, sv);
+	setServoAngle(control, control->poly[i].servo, sv);
+}
+
+void setStateValue(TServoControl* control, int state, float value) {
+	for (int i = 0; i < control->states[state].num; ++i) {
+		setMuscleValue(control, control->states[state].servoPoly[i], value);
+	}
+}
+
 float moveToStep(TServoControl* control, int step) {
 	if (step >= 0 && step < MAX_STEPS) {
 		float maxDiff = 0;
@@ -146,15 +161,22 @@ int stopRuntime(TServoControl* control) {
 }
 
 int wormControl(TServoControl* control, int id, float value) {
+
+	printf("Worm control state=%d: %f\n", id, value);
+	setStateValue(control, id, value);
+/*
 	switch(id) {
 	case CONTROL_STEP2:
 		printf("Worm control step2: %f\n", value);
-		setServoAngle(control, 4, (-0.01384797 * value + 1.77989021) * value + 2.23198502);
-		setServoAngle(control, 5, (0.0204035 * value + (-2.63133776)) * value + (-4.19217714));
+		//setServoAngle(control, 4, (-0.01384797 * value + 1.77989021) * value + 2.23198502);
+		//setServoAngle(control, 5, (0.0204035 * value + (-2.63133776)) * value + (-4.19217714));
+		setMuscleValue(control, 0, value);
+		setMuscleValue(control, 1, value);
 		break;
 	default:
 		printf("Worm control: unknow control id=%d\n", id);
 	}
+*/
 	return 0;
 }
 
