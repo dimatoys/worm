@@ -107,7 +107,7 @@ class HardwareStub(object):
 		return angles
 
 	def wormSetMouthState(self, state):
-		self.setServoAngle(self.MOUTH_MOTOR, [-90,90][state])
+		self.setServoAngle(6, [-90,90][state])
 
 	def wormControl(id, value):
 		self.Logger.debug("control %s: %s" % (id, value))

@@ -186,10 +186,12 @@ function StepsControl(parent) {
 	return sc
 }
 
-function AngleControl(parent, vmin, vmax, vdef, getUrl) {
+function AngleControl(parent, vmin, vmax, vdef, stepInput, name) {
 	var obj = {
+		StepInput: stepInput,
+		Name: name,
 		SendValue: function(){
-			$.getJSON( getUrl(obj.value.val()), function(data) {})
+			$.getJSON( "/worm/control/" + obj.Name + "/" + obj.value.val(), function(data) {})
 		}
 	}
 
@@ -207,6 +209,7 @@ function AngleControl(parent, vmin, vmax, vdef, getUrl) {
 	                         value: parseFloat(vdef),
 	                        change: function( event, ui ) {
 										obj.value.val(ui.value)
+										obj.StepInput.val(obj.Name)
 										obj.SendValue()
 									}
 	})
@@ -215,6 +218,7 @@ function AngleControl(parent, vmin, vmax, vdef, getUrl) {
 }
 
 var stepsControl = undefined
+var wormStates = undefined
 
 $(function() {
 	$.getJSON( "/getservos" ,function( data ) {
@@ -228,18 +232,6 @@ $(function() {
 			             channel.value)
 		})
 	});
-	stepsControl = StepsControl($("#steps"))
-	$("#step").text(nextStep)
-
-	$("#nextStep").click(function(){
-		$.getJSON( "/worm/moveto/" + $("#step").val(), function(data) {
-			nextStep = parseInt($("#step").val())  + 1
-			if (nextStep >= stepsControl.steps) {
-				nextStep = 0
-			}
-			$("#step").val(nextStep)
-		})
-	})
 
 	$("#worm_stop").click(function(){
 		$.getJSON( "/worm/setstate/stop", function(data) {})
@@ -266,13 +258,52 @@ $(function() {
 	})
 
 	$.getJSON( "/worm/getcontrolstates" ,function( data ) {
+		var minmax = 100000
+		wormStates = []
 		$.each(data, function(id, step){
 			var name = step.name
 			tr = $("<tr/>").appendTo("#control_states")
 			               .append($("<td/>").text(name))
 			parent = $("<td/>").appendTo(tr)
-			AngleControl(parent, step.min,  step.max, step.init, function(value){ return "/worm/control/" + name + "/" + value})
+			AngleControl(parent, step.min,  step.max, step.init, $("#step"), name)
+			stepmax = parseFloat(step.max)
+			if (stepmax > 0 && stepmax < minmax) {
+				minmax = stepmax
+			}
+			wormStates.push(name)
 		})
+		$("#stepsize_slider").slider({orientation: "horizontal",
+	                           min: 0,
+	                           max: minmax,
+	                         value: 0,
+	                        change: function( event, ui ) {
+										$("#stepsize").val(ui.value)
+									}
+		})
+		$("#set_stepsize").click(function(){
+			$("#stepsize_slider").slider('value', $("#stepsize").val());
+		})
+	})
+
+	$("#nextStep").click(function(){
+		step = $("#step").val()
+		step_idx = -1
+		for(var i = 0; i < wormStates.length;++i){
+			if (step == wormStates[i]) {
+				step_idx = i
+				break
+			}
+		}
+		if (step_idx >= 0){
+			$.getJSON( "/worm/control/" + wormStates[step_idx] + "/" + $("#stepsize").val(), function(data) {})
+			++step_idx
+			if (step_idx >= wormStates.length) {
+				step_idx = 0
+			}
+		} else {
+			step_idx = 0
+		}
+		$("#step").val(wormStates[step_idx])
 	})
 })
 
@@ -310,7 +341,9 @@ $(document).ready(function() {
 				<td>
 					<button id="nextStep">Next</button>
 					<input id="step" value="0">/
-					<span id="totalSteps">-</span>
+					<div id="stepsize_slider"></div>
+					<input id="stepsize" value="0">
+					<button id="set_stepsize">Set</button>
 				</td>
 			</tr>
 		<table>
