@@ -38,7 +38,9 @@ class TPoly4(Structure):
 
 class TState(Structure):
 	_fields_ = [("num", c_int),
-				("servoPoly", c_int * 7)]
+				("servoPoly", c_int * 7),
+				("numTurnServos", c_int),
+				("servoTurn", c_int * 7)]
 
 class TServoControl(Structure):
 	_fields_ = [("hardware", c_void_p),
@@ -49,8 +51,14 @@ class TServoControl(Structure):
 				("numSteps", c_int),
 				("currentStep", c_int),
 				("pause_rate", c_float),
+				("stepSize", c_float),
+				("currentTurn", c_float),
+				("nextTurn", c_float),
+				("currentState", c_int),
+				("NumPoly", c_int),
+				("NumStates", c_int),
 				("states", TState * 30),
-				("poly", TPoly4 * 50),
+				("poly", TPoly4 * 100),
 				("steps", TWormStep * 50)]
 
 	def __init__(self, module, params, logger):
@@ -61,15 +69,14 @@ class TServoControl(Structure):
 		self.module.initServos.restype  = c_int
 		self.module.setServoValue.argtypes = [POINTER(TServoControl), c_int, c_int]
 		self.module.setServoAngle.argtypes = [POINTER(TServoControl), c_int, c_float]
-		self.module.setServoAngle.restype  = c_int
-		self.module.moveToStep.argtypes = [POINTER(TServoControl), c_int]
-		self.module.moveToStep.restype  = c_float
+		self.module.setServoAngle.restype  = c_float
+		self.module.updateState.argtypes = [POINTER(TServoControl)]
+		self.module.updateState.restype  = c_float
+
 		self.module.initRuntime.argtypes = [POINTER(TServoControl)]
 		self.module.initRuntime.restype  = c_int
 		self.module.stopRuntime.argtypes = [POINTER(TServoControl)]
 		self.module.stopRuntime.restype  = c_int
-		self.module.wormControl.argtypes = [POINTER(TServoControl), c_int, c_float]
-		self.module.wormControl.restype  = c_int
 
 
 		self.active = []
@@ -81,23 +88,16 @@ class TServoControl(Structure):
 				                         params[param + ".max"])
 				self.active.append(s)
 
-		step = 0
-		while True:
-			stepProp = "worm.steps.%d." % step
-			if stepProp + "0" in params:
-				for m in range(4):
-					self.steps[step].motors[m] = float(params[stepProp + str(m)])
-			else:
-				break
-			step += 1
-		self.numSteps = step
-
 		if "worm.pauseRate" in params:
 			self.pause_rate = float(params["worm.pauseRate"])
 
 		self.NumPoly = 0
 		self.NumStates = 0
+		self.currentState = 0
 		self.stateMap = {}
+		self.stepSize = 100
+		self.currentTurn = 0
+		self.nextTurn = 0
 		pattern = re.compile("worm\\.state\\.(\w+)\\.")
 		keys = list(params.keys())
 		keys.sort()
@@ -112,11 +112,9 @@ class TServoControl(Structure):
 		if status != 0:
 			raise Exception("servo status=%d" % status)
 
-		"""
 		status = self.module.initRuntime(byref(self))
 		if status != 0:
 			raise Exception("runtime status=%d" % status)
-		"""
 
 	def setValue(self, servo, value):
 		self.module.setServoValue(byref(self), int(servo), int(value))
@@ -129,6 +127,17 @@ class TServoControl(Structure):
 	def setParams(self, servo, vmin, vmid, vmax):
 		self.servos[int(servo)].setParams(vmin, vmid, vmax)
 
+	def getServos(self):
+		result = []
+		for s in range(len(self.active)):
+			result.append({"channel": s,
+						   "min": self.servos[s].min,
+						   "mid": self.servos[s].mid,
+						   "max": self.servos[s].max,
+						   "value": self.servos[s].value,
+						   "angle": self.servos[s].angle})
+		return result
+
 	def exportParams(self, params):
 		for s in self.active:
 			param = "hardware.servos.%d" % s
@@ -137,37 +146,62 @@ class TServoControl(Structure):
 			params[param + ".max"] = self.servos[s].max
 		params["worm.pauseRate"] = self.pause_rate
 
-	def movetoStep(self, step):
-		return self.module.moveToStep(byref(self), int(step))
-
 	def setState(self, state):
 		self.runtime_state = int(state)
 
 	def setRate(self, rate):
 		self.pause_rate = float(rate)
 
-	def wormControl(self, id, value):
+	def wormControlSetState(self, id):
 		if id in self.stateMap:
-			return self.module.wormControl(byref(self), self.stateMap[id]["id"], float(value))
+			self.currentState = self.stateMap[id]["id"]
+			self.module.updateState(byref(self))
+			return 0
 		else:
 			return -1
 
+	def wormControlSetStepsize(self, value):
+		self.stepSize = float(value)
+		self.module.updateState(byref(self))
+		return 0
+
 	def loadState(self, params, stateId):
-		for stateMuscles in range(20):
-			prefix = "worm.state.%s.poly.%c" % (stateId, ord('a') + stateMuscles)
+		stateServo = 0
+		while True:
+			prefix = "worm.state.%s.poly.%c" % (stateId, ord('a') + stateServo)
 			if prefix + ".servo" in params:
 				self.poly[self.NumPoly].load(params, prefix)
-				self.states[self.NumStates].servoPoly[stateMuscles] = self.NumPoly
+				self.states[self.NumStates].servoPoly[stateServo] = self.NumPoly
 				self.NumPoly += 1
+				stateServo += 1
 			else:
-				self.states[self.NumStates].num = stateMuscles
-				self.stateMap[stateId] = {"id": self.NumStates,
-										  "min": params["worm.state.%s.min" % stateId],
-										  "max": params["worm.state.%s.max" % stateId],
-										  "init": params["worm.state.%s.init" % stateId]}
-				self.NumStates += 1
+				break
+		self.states[self.NumStates].num = stateServo
+
+		turnServo = 0
+		while True:
+			prefix = "worm.state.%s.turn.%c" % (stateId, ord('a') + turnServo)
+			if prefix + ".servo" in params:
+				self.poly[self.NumPoly].load(params, prefix)
+				self.states[self.NumStates].servoTurn[turnServo] = self.NumPoly
+				self.NumPoly += 1
+				turnServo += 1
+			else:
 				break
 
+		self.states[self.NumStates].numTurnServos = turnServo
+
+		self.stateMap[stateId] = {"id": self.NumStates}
+		minParam = "worm.state.%s.min" % stateId
+		maxParam = "worm.state.%s.max" % stateId
+		initParam = "worm.state.%s.init" % stateId
+		self.stateMap[stateId]["min"] = float(params[minParam]) if minParam in params else 0
+		self.stateMap[stateId]["max"] = float(params[maxParam]) if maxParam in params else 0
+		self.stateMap[stateId]["init"] = float(params[initParam]) if initParam in params else 0
+		if self.stateMap[stateId]["max"] > 0 and self.stateMap[stateId]["max"] < self.stepSize:
+			self.stepSize = self.stateMap[stateId]["max"]
+		self.NumStates += 1
+	
 
 
 class Hardware(HardwareStub):
@@ -178,6 +212,11 @@ class Hardware(HardwareStub):
 		self.loadParams()
 
 		self.ServoControl = TServoControl(self.module, self.params, logger)
+
+		self.idlePause = 0.5
+
+	def getServos(self):
+		return self.ServoControl.getServos()
 
 	def setServoValue(self, servo, value):
 		self.ServoControl.setValue(servo, value)
@@ -195,6 +234,7 @@ class Hardware(HardwareStub):
 		return self.ServoControl.movetoStep(step)
 
 	def wormStop(self):
+		self.ServoControl.runtime_pause = self.idlePause
 		self.ServoControl.setState(1)
 
 	def wormMoveForward(self):
@@ -206,8 +246,14 @@ class Hardware(HardwareStub):
 	def wormSetPauseRate(self, rate):
 		self.ServoControl.setRate(rate)
 
-	def wormControl(self, id, value):
-		return self.ServoControl.wormControl(id, value)
+	def wormControlSetState(self, id):
+		return self.ServoControl.wormControlSetState(id)
+
+	def wormControlSetStepsize(self, value):
+		return self.ServoControl.wormControlSetStepsize(value)
+
+	def wormControlSetTurn(self, angle):
+		self.ServoControl.nextTurn = float(angle)
 
 	def wormGetStates(self):
 		result = []

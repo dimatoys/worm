@@ -65,6 +65,17 @@ function MotorControl(parent, channel, vmin, vmid, vmax, value) {
 					vmax = parseFloat(this.max_input.val())
 					$.getJSON( "/setservoparams/" + this.Channel + "/" + vmin + "/" + vmid + "/" + vmax,
 					  function(){})
+				},
+
+				Refresh: function(data){
+					console.log(data)
+					obj.inValueChange = true
+					obj.slider.slider('value', data.angle);
+					obj.inValueChange = false
+					obj.value_input.val(data.value)
+					this.min_input.val(data.min)
+					this.mid_input.val(data.mid)
+					this.max_input.val(data.max)
 				}
 		}
 	
@@ -219,19 +230,43 @@ function AngleControl(parent, vmin, vmax, vdef, stepInput, name) {
 
 var stepsControl = undefined
 var wormStates = undefined
+var motors = undefined
+
+function refresh_motors(){
+	$.getJSON( "/getservos" ,function( data ) {
+		$.each(data, function(i, channel){
+			motors[i].Refresh(channel)
+		})
+	})
+}
+
+function getCurrentStepIdx(){
+	step = $("#step").val()
+	step_idx = -1
+	for(var i = 0; i < wormStates.length;++i){
+		if (step == wormStates[i]) {
+			step_idx = i
+			break
+		}
+	}
+	return step_idx
+}
 
 $(function() {
 	$.getJSON( "/getservos" ,function( data ) {
+		motors = []
 		$.each(data, function(i, channel){
 			parent = $("<td/>").appendTo("#motors")
-			MotorControl(parent,
-			             channel.channel,
-			             channel.min,
-			             channel.mid,
-			             channel.max,
-			             channel.value)
+			motors.push(MotorControl(parent,
+			                         channel.channel,
+			                         channel.min,
+			                         channel.mid,
+			                         channel.max,
+			                         channel.value))
 		})
 	});
+
+	$("#servos_refresh").click(refresh_motors)
 
 	$("#worm_stop").click(function(){
 		$.getJSON( "/worm/setstate/stop", function(data) {})
@@ -262,10 +297,6 @@ $(function() {
 		wormStates = []
 		$.each(data, function(id, step){
 			var name = step.name
-			tr = $("<tr/>").appendTo("#control_states")
-			               .append($("<td/>").text(name))
-			parent = $("<td/>").appendTo(tr)
-			AngleControl(parent, step.min,  step.max, step.init, $("#step"), name)
 			stepmax = parseFloat(step.max)
 			if (stepmax > 0 && stepmax < minmax) {
 				minmax = stepmax
@@ -278,24 +309,30 @@ $(function() {
 	                         value: 0,
 	                        change: function( event, ui ) {
 										$("#stepsize").val(ui.value)
+										$.getJSON( "/worm/stepsize/" + ui.value, refresh_motors)
 									}
 		})
 		$("#set_stepsize").click(function(){
 			$("#stepsize_slider").slider('value', $("#stepsize").val());
 		})
+		$("#turn_slider").slider({orientation: "horizontal",
+	                           min: -90,
+	                           max: 90,
+	                         value: 0,
+	                        change: function( event, ui ) {
+										$("#turn").val(ui.value)
+										$.getJSON( "/worm/turn/" + ui.value, refresh_motors)
+									}
+		})
+		$("#set_turn").click(function(){
+			$("#stepsize_turn").slider('value', $("#turn").val());
+		})
 	})
 
 	$("#nextStep").click(function(){
-		step = $("#step").val()
-		step_idx = -1
-		for(var i = 0; i < wormStates.length;++i){
-			if (step == wormStates[i]) {
-				step_idx = i
-				break
-			}
-		}
+		step_idx = getCurrentStepIdx()
 		if (step_idx >= 0){
-			$.getJSON( "/worm/control/" + wormStates[step_idx] + "/" + $("#stepsize").val(), function(data) {})
+			$.getJSON( "/worm/control/" + wormStates[step_idx], refresh_motors)
 			++step_idx
 			if (step_idx >= wormStates.length) {
 				step_idx = 0
@@ -305,6 +342,21 @@ $(function() {
 		}
 		$("#step").val(wormStates[step_idx])
 	})
+
+	$("#prevStep").click(function(){
+		step_idx = getCurrentStepIdx()
+		if (step_idx >= 0){
+			--step_idx
+			if (step_idx < 0) {
+				step_idx = wormStates.length - 1
+			}
+			$.getJSON( "/worm/control/" + wormStates[step_idx], refresh_motors)
+		} else {
+			step_idx = 0
+		}
+		$("#step").val(wormStates[step_idx])
+	})
+
 })
 
 $(document).ready(function() {
@@ -313,6 +365,7 @@ $(document).ready(function() {
 	</head>
 	<body>
 		<h1>Worm control</h1>
+		<button id="servos_refresh">REFRESH</button>
 		<table>
 			<tr id="motors">
 			</tr>
@@ -339,15 +392,27 @@ $(document).ready(function() {
 			<tr>
 				<td>Steps control</tdtd>
 				<td>
+					<button id="prevStep">Prev</button>
+					<input id="step" value="0">
 					<button id="nextStep">Next</button>
-					<input id="step" value="0">/
+				</td>
+			</tr>
+			<tr>
+				<td>Step size</td>>
+				<td>
 					<div id="stepsize_slider"></div>
 					<input id="stepsize" value="0">
 					<button id="set_stepsize">Set</button>
 				</td>
 			</tr>
+			<tr>
+				<td>Turn</td>
+				<td>
+					<div id="turn_slider"></div>
+					<input id="turn" value="0">
+					<button id="set_turn">Set</button>
+				</td>
+			</tr>
 		<table>
-		<table id="control_states" border=2></table>
-		<div id="steps"></div>
 	</body>
 </html>

@@ -5,6 +5,10 @@
 #include <time.h>
 #include <pthread.h>
 
+#include <cerrno>
+#include <unistd.h>
+#include <sys/select.h>
+
 #ifdef RASPBERRY
 #include <unistd.h>
 #include "bcm2835.h"
@@ -36,7 +40,7 @@ int initServos(TServoControl* control) {
 }
 
 void updateServoValue(void* pca9685, int servo, int value) {
-	printf("updateServoValue: %d:%d\n", servo, value);
+	//printf("updateServoValue: %d:%d\n", servo, value);
 
 #ifdef RASPBERRY
 	((PCA9685*)pca9685)->Write(CHANNEL(servo), VALUE(value));
@@ -49,66 +53,74 @@ void setServoValue(TServoControl* control, int servo, int value) {
 	updateServoValue(control->hardware, servo, value);
 }
 
-int setServoAngle(TServoControl* control, int servo, float angle) {
+float setServoAngle(TServoControl* control, int servo, float angle) {
 	TServo* srec = &control->servos[servo];
+	float diff = fabs(angle - srec->angle);
+	//printf("SetServoAngle: %f -> %f, diff=%f\n", srec->angle, angle, diff);
 	srec->angle = angle;
 	srec->value = srec->mid + (angle >= 0 ? srec->max - srec->mid : srec->mid - srec->min) * angle / 90.0;
 	updateServoValue(control->hardware, servo, srec->value);
-	return srec->value;
+	return diff;
 }
 
-void setMuscleValue(TServoControl* control, int i, float value) {
+float setMuscleValue(TServoControl* control, int i, float value) {
 	float sv = 0;
 	for (int j = control->poly[i].s - 1; j >= 0 ; --j) {
 		sv = sv * value + control->poly[i].k[j];
 	}
-	printf("set %d angle %f\n", control->poly[i].servo, sv);
-	setServoAngle(control, control->poly[i].servo, sv);
+	float diff = setServoAngle(control, control->poly[i].servo, sv);
+	printf("set %d angle %f diff=%f\n", control->poly[i].servo, sv, diff);
+	return diff;
 }
 
-void setStateValue(TServoControl* control, int state, float value) {
+float updateState(TServoControl* control) {
+	float maxDiff = 0;
+	auto state = ((TServoControl*)control)->currentState;
+	if (state == 0) {
+		((TServoControl*)control)->currentTurn = ((TServoControl*)control)->nextTurn;
+		printf("Turn updated to %f\n", ((TServoControl*)control)->currentTurn);
+	}
+
 	for (int i = 0; i < control->states[state].num; ++i) {
-		setMuscleValue(control, control->states[state].servoPoly[i], value);
-	}
-}
-
-float moveToStep(TServoControl* control, int step) {
-	if (step >= 0 && step < MAX_STEPS) {
-		float maxDiff = 0;
-		for (int i = 0; i< NUM_MOTORS; ++i) {
-			float newAngle = control->steps[step].motors[i];
-			float absDiff = fabs(newAngle - control->servos[i].angle);
-			if (absDiff > maxDiff) {
-				maxDiff = absDiff;
-			}
-			setServoAngle(control, i, newAngle);
+		auto diff = setMuscleValue(control, control->states[state].servoPoly[i], control->stepSize);
+		if (diff > maxDiff) {
+			maxDiff = diff;
 		}
-		control->currentStep = step;
-		return maxDiff;
-	} else {
-		return -1;
 	}
+	for (int i = 0; i < control->states[state].numTurnServos; ++i) {
+		auto diff = setMuscleValue(control, control->states[state].turnServo[i], control->currentTurn);
+		if (diff > maxDiff) {
+			maxDiff = diff;
+		}
+	}
+	return maxDiff;
 }
 
 void* runtimeMain(void* control) {
 	struct timespec  sleepTime;
-	struct timespec returnTime;
 	sleepTime.tv_sec = 0;
+
+	struct timespec ts;
+
 	while(((TServoControl*)control)->runtime_state != RUNTIME_STATE_EXIT) {
 		switch(((TServoControl*)control)->runtime_state) {
 			case RUNTIME_STATE_IDLE:
-				printf("idle %ld\n", time(NULL));
+				timespec_get(&ts, TIME_UTC);
+				//printf("idle %ld.%09ld\n", (long)ts.tv_sec, ts.tv_nsec);
+				((TServoControl*)control)->runtime_pause = RUNTIME_DEFAULT_IDLE_PAUSE;
 				break;
 			case RUNTIME_STATE_MOVE_FORWARD: {
-				int newStep = ((TServoControl*)control)->currentStep + 1;
-				if (newStep >= ((TServoControl*)control)->numSteps) {
-					newStep = 0;
+				int newState = ((TServoControl*)control)->currentState + 1;
+				if (newState >= ((TServoControl*)control)->numStates) {
+					newState = 0;
 				}
-				float move = moveToStep((TServoControl*)control, newStep);
+				((TServoControl*)control)->currentState = newState;
+				float move = updateState((TServoControl*)control);
 				((TServoControl*)control)->runtime_pause = move * ((TServoControl*)control)->pause_rate;
-				printf("move to step: %d move=%f sleep=%f\n", newStep, move, ((TServoControl*)control)->runtime_pause);
+				printf("move to state: %d move=%f sleep=%f stepsize=%f\n", newState, move, ((TServoControl*)control)->runtime_pause,((TServoControl*)control)->stepSize);
 				break;
 			}
+/*
 			case RUNTIME_STATE_MOVE_BACKWARD: {
 				int newStep = ((TServoControl*)control)->currentStep - 1;
 				if (newStep < 0) {
@@ -119,9 +131,16 @@ void* runtimeMain(void* control) {
 				printf("move to step: %d move=%f sleep=%f\n", newStep, move, ((TServoControl*)control)->runtime_pause);
 				break;
 			}
+*/
+			default:
+				printf("Incorrect stae: %d, switching to idle\n", ((TServoControl*)control)->runtime_state);
+				((TServoControl*)control)->runtime_state = RUNTIME_STATE_IDLE;
 		}
-		sleepTime.tv_nsec = (long)(((TServoControl*)control)->runtime_pause * 1000000000);
-		nanosleep(&sleepTime, &returnTime);
+		sleepTime.tv_nsec = (long)(((TServoControl*)control)->runtime_pause * 1000000000L);
+		int r =clock_nanosleep(CLOCK_MONOTONIC, 0, &sleepTime, NULL);
+		if (r < 0) {
+			printf("sec=%d, nsec=%ld r=%d errno=%d\n", (int)sleepTime.tv_sec, sleepTime.tv_nsec, r, (int)errno);
+		}
 	}
 	return NULL;
 }
@@ -159,24 +178,3 @@ int stopRuntime(TServoControl* control) {
 		return -2;
 	}
 }
-
-int wormControl(TServoControl* control, int id, float value) {
-
-	printf("Worm control state=%d: %f\n", id, value);
-	setStateValue(control, id, value);
-/*
-	switch(id) {
-	case CONTROL_STEP2:
-		printf("Worm control step2: %f\n", value);
-		//setServoAngle(control, 4, (-0.01384797 * value + 1.77989021) * value + 2.23198502);
-		//setServoAngle(control, 5, (0.0204035 * value + (-2.63133776)) * value + (-4.19217714));
-		setMuscleValue(control, 0, value);
-		setMuscleValue(control, 1, value);
-		break;
-	default:
-		printf("Worm control: unknow control id=%d\n", id);
-	}
-*/
-	return 0;
-}
-

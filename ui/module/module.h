@@ -3,7 +3,7 @@ extern "C" {
 #define MAX_STEPS  50
 #define NUM_MOTORS 4
 #define NUM_STATES 30
-#define NUM_POLY   50
+#define NUM_POLY   100
 
 const int RUNTIME_STATE_EXIT = 0;
 const int RUNTIME_STATE_IDLE = 1;
@@ -37,6 +37,8 @@ struct TPoly4 {
 struct TState {
 	int num;
 	int servoPoly[7];
+	int numTurnServos;
+	int turnServo[7];
 };
 
 struct TServoControl {
@@ -48,6 +50,12 @@ struct TServoControl {
 	int			numSteps;
 	int			currentStep;
 	float		pause_rate;
+	float		stepSize;
+	float		currentTurn;
+	float		nextTurn;
+	int			currentState;
+	int 		numPoly;
+	int			numStates;
 	TState		states[NUM_STATES];
 	TPoly4		poly[NUM_POLY];
 	TWormStep	steps[MAX_STEPS];
@@ -55,11 +63,10 @@ struct TServoControl {
 
 int initServos(TServoControl* control);
 void setServoValue(TServoControl* control, int servo, int value);
-int setServoAngle(TServoControl* control, int servo, float angle);
-float moveToStep(TServoControl* control, int step);
+float setServoAngle(TServoControl* control, int servo, float angle);
+float updateState(TServoControl* control);
 
 int initRuntime(TServoControl* control);
 int stopRuntime(TServoControl* control);
 
-int wormControl(TServoControl* control, int id, float value);
 }

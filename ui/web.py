@@ -44,11 +44,6 @@ def get_worm_steps():
 	steps = g_Hardware.getWormSteps()
 	return Response(json.dumps(steps), content_type='text/plain; charset=utf-8')
 
-@app.route('/worm/moveto/<step>')
-def worm_moveto(step):
-	result = g_Hardware.wormMoveToStep(step)
-	return Response(json.dumps(result), content_type='text/plain; charset=utf-8')
-
 @app.route('/worm/setstate/<state>')
 def worm_set_state(state):
 	states = {"stop": g_Hardware.wormStop,
@@ -71,16 +66,26 @@ def worm_set_rate(rate):
 def worm_mouth(state):
 	states ={'open':1, 'close':0}
 	if state in states:
-		g_Hardwaew.wormSetMouthState(states[state])
+		g_Hardware.wormSetMouthState(states[state])
 		result = "OK"
 	else:
 		result = "NotSuchState"
 	return Response(json.dumps({"status":result}), content_type='text/plain; charset=utf-8')
 
-@app.route('/worm/control/<id>/<value>')
-def worm_control(id, value):
-	result = g_Hardware.wormControl(id, value)
+@app.route('/worm/control/<id>')
+def worm_control(id):
+	result = g_Hardware.wormControlSetState(id)
 	return Response(json.dumps({"status":result}), content_type='text/plain; charset=utf-8')
+
+@app.route('/worm/stepsize/<value>')
+def worm_setstepsize(value):
+	result = g_Hardware.wormControlSetStepsize(value)
+	return Response(json.dumps({"status":result}), content_type='text/plain; charset=utf-8')
+
+@app.route('/worm/turn/<value>')
+def worm_setturn(value):
+	g_Hardware.wormControlSetTurn(value)
+	return Response(json.dumps({"status":"Ok"}), content_type='text/plain; charset=utf-8')
 
 @app.route('/worm/getcontrolstates')
 def worm_get_control_states():
