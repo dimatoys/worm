@@ -169,66 +169,6 @@ function MotorControl(parent, channel, vmin, vmid, vmax, value) {
 	return obj
 }
 
-function StepsControl(parent) {
-	
-	var sc = {steps: 0}
-	
-	parent.html("")
-	$.getJSON( "worm/steps", function(data) {
-		table = $("<table/>").appendTo(parent)
-		sc.steps = 0
-		$.each(data, function(i, step){
-			var tr = $("<tr/>").appendTo(table)
-			$("<td/>").text(i).appendTo(tr)
-			$.each(step, function(j, motor){
-				$("<input/>").val(motor)
-							.appendTo($("<td/>").appendTo(tr))
-			})
-			$("<button/>").text("Move to")
-						  .appendTo($("<td/>").appendTo(tr))
-						  .click(function(){
-							$.getJSON( "worm/moveto/" + i, function(data) {})
-						  })
-			sc.steps++;
-		})
-		$("#totalSteps").text(sc.steps)
-	})
-
-	return sc
-}
-
-function AngleControl(parent, vmin, vmax, vdef, stepInput, name) {
-	var obj = {
-		StepInput: stepInput,
-		Name: name,
-		SendValue: function(){
-			$.getJSON( "/worm/control/" + obj.Name + "/" + obj.value.val(), function(data) {})
-		}
-	}
-
-	obj.slider = $("<div/>").css("width", "200px").appendTo(parent)
-	obj.value  = $("<input/>").val(vdef).appendTo(parent)
-	obj.button = $("<button/>").html("Set")
-							   .appendTo(parent)
-	                           .click(function(){
-									obj.slider.slider('value', obj.value.val());
-								})
-
-	obj.slider.slider({orientation: "horizontal",
-	                           min: parseFloat(vmin),
-	                           max: parseFloat(vmax),
-	                         value: parseFloat(vdef),
-	                        change: function( event, ui ) {
-										obj.value.val(ui.value)
-										obj.StepInput.val(obj.Name)
-										obj.SendValue()
-									}
-	})
-	                        
-	return obj
-}
-
-var stepsControl = undefined
 var wormStates = undefined
 var motors = undefined
 
@@ -238,18 +178,6 @@ function refresh_motors(){
 			motors[i].Refresh(channel)
 		})
 	})
-}
-
-function getCurrentStepIdx(){
-	step = $("#step").val()
-	step_idx = -1
-	for(var i = 0; i < wormStates.length;++i){
-		if (step == wormStates[i]) {
-			step_idx = i
-			break
-		}
-	}
-	return step_idx
 }
 
 $(function() {
@@ -294,15 +222,52 @@ $(function() {
 
 	$.getJSON( "/worm/getcontrolstates" ,function( data ) {
 		var minmax = 100000
-		wormStates = []
-		$.each(data, function(id, step){
+		
+		var table = $("#control_table")
+		
+		
+		$.each(data, function(cycle, steps){
+		
+		var row = $("<tr>").appendTo(table)
+		$("<td/>").text(cycle).appendTo(row)
+		var td = $("<td/>").appendTo(row)
+		var prevButton = $("<button/>").text("Prev").appendTo(td)
+		var stepObj = $("<select/>").appendTo(td)
+		var nextButton = $("<button/>").text("Next").appendTo(td)
+		
+		$.each(steps, function(id, step){
 			var name = step.name
-			stepmax = parseFloat(step.max)
-			if (stepmax > 0 && stepmax < minmax) {
-				minmax = stepmax
+			if (cycle == "state") {
+				stepmax = parseFloat(step.max)
+				if (stepmax > 0 && stepmax < minmax) {
+					minmax = stepmax
+				}
 			}
-			wormStates.push(name)
+			stepObj.append($("<option/>").attr("value",id).text(name))
 		})
+			
+		nextButton.click(function(){
+			step_idx = stepObj.val()
+			$.getJSON( "/worm/control/" + cycle + "/" + stepObj.find("option:selected" ).text(), refresh_motors)
+			++step_idx
+			if (step_idx >= stepObj.find("option").length) {
+				step_idx = 0
+			}
+			stepObj.val(step_idx)
+		})
+
+		prevButton.click(function(){
+			step_idx = stepObj.val()
+			--step_idx
+			if (step_idx < 0) {
+				step_idx = stepObj.find("option").length - 1
+			}
+			stepObj.val(step_idx)
+			$.getJSON( "/worm/control/" + cycle + "/" + stepObj.find("option:selected" ).text(), refresh_motors)
+		})
+		
+		})
+		
 		$("#stepsize_slider").slider({orientation: "horizontal",
 	                           min: 0,
 	                           max: minmax,
@@ -312,10 +277,14 @@ $(function() {
 										$.getJSON( "/worm/stepsize/" + ui.value, refresh_motors)
 									}
 		})
-		$("#set_stepsize").click(function(){
+	})
+
+
+	$("#set_stepsize").click(function(){
 			$("#stepsize_slider").slider('value', $("#stepsize").val());
-		})
-		$("#turn_slider").slider({orientation: "horizontal",
+	})
+	
+	$("#turn_slider").slider({orientation: "horizontal",
 	                           min: -90,
 	                           max: 90,
 	                         value: 0,
@@ -323,40 +292,13 @@ $(function() {
 										$("#turn").val(ui.value)
 										$.getJSON( "/worm/turn/" + ui.value, refresh_motors)
 									}
-		})
-		$("#set_turn").click(function(){
-			$("#stepsize_turn").slider('value', $("#turn").val());
-		})
 	})
-
-	$("#nextStep").click(function(){
-		step_idx = getCurrentStepIdx()
-		if (step_idx >= 0){
-			$.getJSON( "/worm/control/" + wormStates[step_idx], refresh_motors)
-			++step_idx
-			if (step_idx >= wormStates.length) {
-				step_idx = 0
-			}
-		} else {
-			step_idx = 0
-		}
-		$("#step").val(wormStates[step_idx])
+	$("#set_turn").click(function(){
+		$("#turn_slider").slider('value', $("#turn").val());
 	})
-
-	$("#prevStep").click(function(){
-		step_idx = getCurrentStepIdx()
-		if (step_idx >= 0){
-			--step_idx
-			if (step_idx < 0) {
-				step_idx = wormStates.length - 1
-			}
-			$.getJSON( "/worm/control/" + wormStates[step_idx], refresh_motors)
-		} else {
-			step_idx = 0
-		}
-		$("#step").val(wormStates[step_idx])
+	$("#set_turn_0").click(function(){
+		$("#turn_slider").slider('value', 0);
 	})
-
 })
 
 $(document).ready(function() {
@@ -371,7 +313,7 @@ $(document).ready(function() {
 			</tr>
 		</table>
 		<h2>Steps</h2>
-		<table border=2>
+		<table border=2 id="control_table">
 			<tr>
 				<td>Mouth control</td>
 				<td>
@@ -385,16 +327,8 @@ $(document).ready(function() {
 					<button id="worm_stop">STOP</button>
 					<button id="worm_forward">FORWARD</button>
 					<button id="worm_backward">BACKWARD</button>
-					<input id="worm_pause_rate" value="0.002">
+					<input id="worm_pause_rate" value="0.003">
 					<button id="worm_update_pause_rate">UPDATE PAUSE RATE</button>
-				</td>
-			</tr>
-			<tr>
-				<td>Steps control</tdtd>
-				<td>
-					<button id="prevStep">Prev</button>
-					<input id="step" value="0">
-					<button id="nextStep">Next</button>
 				</td>
 			</tr>
 			<tr>
@@ -411,6 +345,7 @@ $(document).ready(function() {
 					<div id="turn_slider"></div>
 					<input id="turn" value="0">
 					<button id="set_turn">Set</button>
+					<button id="set_turn_0">Set to 0</button>
 				</td>
 			</tr>
 		<table>

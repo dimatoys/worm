@@ -75,25 +75,52 @@ float setMuscleValue(TServoControl* control, int i, float value) {
 
 float updateState(TServoControl* control) {
 	float maxDiff = 0;
-	auto state = ((TServoControl*)control)->currentState;
+	auto cycle = control->currentCycle;
+	auto state = control->currentState;
+	
+	printf("updateState: cycle=%d state=%d\n", (int)cycle, (int)state);
+	
 	if (state == 0) {
-		((TServoControl*)control)->currentTurn = ((TServoControl*)control)->nextTurn;
-		printf("Turn updated to %f\n", ((TServoControl*)control)->currentTurn);
-	}
+		//((TServoControl*)control)->currentTurn = ((TServoControl*)control)->nextTurn;
+		//printf("Turn updated to %f\n", ((TServoControl*)control)->currentTurn);
 
-	for (int i = 0; i < control->states[state].num; ++i) {
-		auto diff = setMuscleValue(control, control->states[state].servoPoly[i], control->stepSize);
-		if (diff > maxDiff) {
-			maxDiff = diff;
+		if (control->submitMouthState != control->mouthState) {
+			maxDiff = setServoAngle(control, 6, control->submitMouthState == 1 ? 90 : -90);
+			control->mouthState = control->submitMouthState;
 		}
 	}
+
+	switch(cycle) {
+	case CYCLE_MOVEMENT:
+		for (int i = 0; i < control->states[state].num; ++i) {
+			auto diff = setMuscleValue(control, control->states[state].servoPoly[i], control->stepSize);
+			if (diff > maxDiff) {
+				maxDiff = diff;
+			}
+		}
+		break;
+	case CYCLE_TURN:
+		for (int i = 0; i < control->turnStates[state].num; ++i) {
+			auto diff = setMuscleValue(control, control->turnStates[state].servoPoly[i], control->currentCurve);
+			if (diff > maxDiff) {
+				maxDiff = diff;
+			}
+		}
+		break;
+	}
+/*
 	for (int i = 0; i < control->states[state].numTurnServos; ++i) {
 		auto diff = setMuscleValue(control, control->states[state].turnServo[i], control->currentTurn);
 		if (diff > maxDiff) {
 			maxDiff = diff;
 		}
 	}
+*/
 	return maxDiff;
+}
+
+void setTurn(TServoControl* control, float angle) {
+	control->nextTurn = angle;
 }
 
 void* runtimeMain(void* control) {
@@ -117,21 +144,21 @@ void* runtimeMain(void* control) {
 				((TServoControl*)control)->currentState = newState;
 				float move = updateState((TServoControl*)control);
 				((TServoControl*)control)->runtime_pause = move * ((TServoControl*)control)->pause_rate;
-				printf("move to state: %d move=%f sleep=%f stepsize=%f\n", newState, move, ((TServoControl*)control)->runtime_pause,((TServoControl*)control)->stepSize);
+				//printf("move to state: %d move=%f sleep=%f stepsize=%f\n", newState, move, ((TServoControl*)control)->runtime_pause,((TServoControl*)control)->stepSize);
 				break;
 			}
-/*
 			case RUNTIME_STATE_MOVE_BACKWARD: {
-				int newStep = ((TServoControl*)control)->currentStep - 1;
-				if (newStep < 0) {
-					newStep = ((TServoControl*)control)->numSteps - 1;
+				int newState = ((TServoControl*)control)->currentState - 1;
+				if (newState < 0) {
+					newState = ((TServoControl*)control)->numStates - 1;
 				}
-				float move = moveToStep((TServoControl*)control, newStep);
+				((TServoControl*)control)->currentState = newState;
+				float move = updateState((TServoControl*)control);
 				((TServoControl*)control)->runtime_pause = move * ((TServoControl*)control)->pause_rate;
-				printf("move to step: %d move=%f sleep=%f\n", newStep, move, ((TServoControl*)control)->runtime_pause);
+				//printf("move to step: %d move=%f sleep=%f\n", newStep, move, ((TServoControl*)control)->runtime_pause);
 				break;
 			}
-*/
+
 			default:
 				printf("Incorrect stae: %d, switching to idle\n", ((TServoControl*)control)->runtime_state);
 				((TServoControl*)control)->runtime_state = RUNTIME_STATE_IDLE;

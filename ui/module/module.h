@@ -13,6 +13,9 @@ const int RUNTIME_STATE_MOVE_BACKWARD = 3;
 const float RUNTIME_DEFAULT_IDLE_PAUSE = 0.99;
 const float DEFAULT_PAUSE_RATE = 0.002;
 
+const int CYCLE_MOVEMENT = 0;
+const int CYCLE_TURN     = 1;
+
 #define CONTROL_STEP2 1
 #define CONTROL_STEP3 2
 
@@ -54,9 +57,15 @@ struct TServoControl {
 	float		currentTurn;
 	float		nextTurn;
 	int			currentState;
+	int			currentCycle;
+	float		currentCurve;
+	int			mouthState;
+	int			submitMouthState;
 	int 		numPoly;
 	int			numStates;
 	TState		states[NUM_STATES];
+	int			numTurnStates;
+	TState		turnStates[NUM_STATES];
 	TPoly4		poly[NUM_POLY];
 	TWormStep	steps[MAX_STEPS];
 };
@@ -65,6 +74,7 @@ int initServos(TServoControl* control);
 void setServoValue(TServoControl* control, int servo, int value);
 float setServoAngle(TServoControl* control, int servo, float angle);
 float updateState(TServoControl* control);
+void setTurn(TServoControl* control, float angle);
 
 int initRuntime(TServoControl* control);
 int stopRuntime(TServoControl* control);

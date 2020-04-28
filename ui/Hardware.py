@@ -3,6 +3,8 @@ from HardwareStub import HardwareStub
 import copy
 import re
 
+CYCLES = {"state":0, "turn":1}
+
 class TServo(Structure):
 	_fields_ = [("min", c_int),
 				("mid", c_int),
@@ -55,9 +57,15 @@ class TServoControl(Structure):
 				("currentTurn", c_float),
 				("nextTurn", c_float),
 				("currentState", c_int),
+				("currentCycle", c_int),
+				("currentCurve", c_float),
+				("mouthState", c_int),
+				("submitMouthState", c_int),
 				("NumPoly", c_int),
 				("NumStates", c_int),
 				("states", TState * 30),
+				("NumTurnStates", c_int),
+				("turnStates", TState * 30),
 				("poly", TPoly4 * 100),
 				("steps", TWormStep * 50)]
 
@@ -72,6 +80,7 @@ class TServoControl(Structure):
 		self.module.setServoAngle.restype  = c_float
 		self.module.updateState.argtypes = [POINTER(TServoControl)]
 		self.module.updateState.restype  = c_float
+		self.module.setTurn.argtypes = [POINTER(TServoControl), c_float]
 
 		self.module.initRuntime.argtypes = [POINTER(TServoControl)]
 		self.module.initRuntime.restype  = c_int
@@ -91,22 +100,22 @@ class TServoControl(Structure):
 		if "worm.pauseRate" in params:
 			self.pause_rate = float(params["worm.pauseRate"])
 
-		self.NumPoly = 0
-		self.NumStates = 0
+		self.currentCycle = CYCLES["state"]
 		self.currentState = 0
-		self.stateMap = {}
 		self.stepSize = 100
 		self.currentTurn = 0
 		self.nextTurn = 0
-		pattern = re.compile("worm\\.state\\.(\w+)\\.")
-		keys = list(params.keys())
-		keys.sort()
-		for key in keys:
-			m = pattern.match(key)
-			if m is not None:
-				if m.group(1) not in self.stateMap:
-					print(m.group(1))
-					self.loadState(params, m.group(1))
+		self.currentCurve = 0
+		self.mouthState = 0
+		self.submitMouthState = 0
+
+		self.stateMap = {}
+		self.NumPoly = 0
+		self.NumStates = 0
+		self.NumTurnStates = 0
+
+		for cycle in CYCLES.keys():
+			self.loadStates(params,cycle)
 
 		status = self.module.initServos(byref(self))
 		if status != 0:
@@ -152,9 +161,12 @@ class TServoControl(Structure):
 	def setRate(self, rate):
 		self.pause_rate = float(rate)
 
-	def wormControlSetState(self, id):
-		if id in self.stateMap:
-			self.currentState = self.stateMap[id]["id"]
+	def wormControlSetState(self, mtype, id):
+		if mtype in CYCLES and id in self.stateMap[mtype]:
+			self.currentCycle = CYCLES[mtype]
+			self.currentState = self.stateMap[mtype][id]["id"]
+			if mtype == "turn":
+				self.currentCurve = self.nextTurn
 			self.module.updateState(byref(self))
 			return 0
 		else:
@@ -165,44 +177,73 @@ class TServoControl(Structure):
 		self.module.updateState(byref(self))
 		return 0
 
-	def loadState(self, params, stateId):
-		stateServo = 0
-		while True:
-			prefix = "worm.state.%s.poly.%c" % (stateId, ord('a') + stateServo)
-			if prefix + ".servo" in params:
-				self.poly[self.NumPoly].load(params, prefix)
-				self.states[self.NumStates].servoPoly[stateServo] = self.NumPoly
-				self.NumPoly += 1
-				stateServo += 1
-			else:
-				break
-		self.states[self.NumStates].num = stateServo
+	def wormControlSetTurn(self, angle):
+		self.module.setTurn(byref(self), float(angle))
 
-		turnServo = 0
-		while True:
-			prefix = "worm.state.%s.turn.%c" % (stateId, ord('a') + turnServo)
-			if prefix + ".servo" in params:
-				self.poly[self.NumPoly].load(params, prefix)
-				self.states[self.NumStates].servoTurn[turnServo] = self.NumPoly
-				self.NumPoly += 1
-				turnServo += 1
-			else:
-				break
+	def loadStates(self, params, mtype):
+		self.stateMap[mtype] = {}
+		pattern = re.compile("worm\\.%s\\.(\w+)\\." % mtype)
+		keys = list(params.keys())
+		keys.sort()
+		for key in keys:
+			m = pattern.match(key)
+			if m is not None:
+				if m.group(1) not in self.stateMap[mtype]:
+					stateId = m.group(1)
+					print(mtype,stateId)
+					stateServo = 0
+					while True:
+						prefix = "worm.%s.%s.poly.%c" % (mtype,stateId, ord('a') + stateServo)
+						if prefix + ".servo" in params:
+							self.poly[self.NumPoly].load(params, prefix)
+							if mtype == "state":
+								self.states[self.NumStates].servoPoly[stateServo] = self.NumPoly
+							else:
+								self.turnStates[self.NumTurnStates].servoPoly[stateServo] = self.NumPoly
+							self.NumPoly += 1
+							stateServo += 1
+						else:
+							break
+					if mtype == "state":
+						self.states[self.NumStates].num = stateServo
+					else:
+						self.turnStates[self.NumTurnStates].num = stateServo
 
-		self.states[self.NumStates].numTurnServos = turnServo
+					turnServo = 0
+					"""
+					while True:
+						prefix = "worm.%s.%s.turn.%c" % (mtype, stateId, ord('a') + turnServo)
+						if prefix + ".servo" in params:
+							self.poly[self.NumPoly].load(params, prefix)
+							if mtype == "state":
+								self.states[self.NumStates].servoTurn[turnServo] = self.NumPoly
+							else:
+								self.turnStates[self.NumTurnStates].servoTurn[turnServo] = self.NumPoly
+							self.NumPoly += 1
+							turnServo += 1
+						else:
+							break
+					"""
+					if mtype == "state":
+						self.states[self.NumStates].numTurnServos = turnServo
+						self.stateMap[mtype][stateId] = {"id": self.NumStates}
+					else:
+						self.turnStates[self.NumTurnStates].numTurnServos = turnServo
+						self.stateMap[mtype][stateId] = {"id": self.NumTurnStates}
 
-		self.stateMap[stateId] = {"id": self.NumStates}
-		minParam = "worm.state.%s.min" % stateId
-		maxParam = "worm.state.%s.max" % stateId
-		initParam = "worm.state.%s.init" % stateId
-		self.stateMap[stateId]["min"] = float(params[minParam]) if minParam in params else 0
-		self.stateMap[stateId]["max"] = float(params[maxParam]) if maxParam in params else 0
-		self.stateMap[stateId]["init"] = float(params[initParam]) if initParam in params else 0
-		if self.stateMap[stateId]["max"] > 0 and self.stateMap[stateId]["max"] < self.stepSize:
-			self.stepSize = self.stateMap[stateId]["max"]
-		self.NumStates += 1
-	
-
+					minParam = "worm.%s.%s.min" % (mtype, stateId)
+					maxParam = "worm.%s.%s.max" % (mtype, stateId)
+					initParam = "worm.%s.%s.init" % (mtype, stateId)
+					self.stateMap[mtype][stateId]["min"] = float(params[minParam]) if minParam in params else 0
+					self.stateMap[mtype][stateId]["max"] = float(params[maxParam]) if maxParam in params else 0
+					self.stateMap[mtype][stateId]["init"] = float(params[initParam]) if initParam in params else 0
+					if self.stateMap[mtype][stateId]["max"] > 0 and self.stateMap[mtype][stateId]["max"] < self.stepSize:
+						self.stepSize = self.stateMap[mtype][stateId]["max"]
+					
+					if mtype == "state":
+						self.NumStates += 1
+					else:
+						self.NumTurnStates += 1
 
 class Hardware(HardwareStub):
 	def __init__(self, logger, config_file):
@@ -246,21 +287,26 @@ class Hardware(HardwareStub):
 	def wormSetPauseRate(self, rate):
 		self.ServoControl.setRate(rate)
 
-	def wormControlSetState(self, id):
-		return self.ServoControl.wormControlSetState(id)
+	def wormControlSetState(self, mtype, id):
+		return self.ServoControl.wormControlSetState(mtype, id)
 
 	def wormControlSetStepsize(self, value):
 		return self.ServoControl.wormControlSetStepsize(value)
 
 	def wormControlSetTurn(self, angle):
-		self.ServoControl.nextTurn = float(angle)
+		self.ServoControl.wormControlSetTurn(angle)
 
 	def wormGetStates(self):
-		result = []
-		for s,p in self.ServoControl.stateMap.items():
-			np = copy.deepcopy(p)
-			np["name"] = s
-			result.append(np)
-		result.sort(key=lambda x: x["id"])
+		result = {}
+		for cycle, smap in self.ServoControl.stateMap.items():
+			result[cycle] = []
+			for s,p in smap.items():
+				np = copy.deepcopy(p)
+				np["name"] = s
+				result[cycle].append(np)
+			result[cycle].sort(key=lambda x: x["id"])
 		return result
+
+	def wormSetMouthState(self, state):
+		self.ServoControl.submitMouthState = state
 

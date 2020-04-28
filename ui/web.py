@@ -72,9 +72,9 @@ def worm_mouth(state):
 		result = "NotSuchState"
 	return Response(json.dumps({"status":result}), content_type='text/plain; charset=utf-8')
 
-@app.route('/worm/control/<id>')
-def worm_control(id):
-	result = g_Hardware.wormControlSetState(id)
+@app.route('/worm/control/<mtype>/<id>')
+def worm_control(mtype,id):
+	result = g_Hardware.wormControlSetState(mtype,id)
 	return Response(json.dumps({"status":result}), content_type='text/plain; charset=utf-8')
 
 @app.route('/worm/stepsize/<value>')
