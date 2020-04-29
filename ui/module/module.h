@@ -15,6 +15,7 @@ const float DEFAULT_PAUSE_RATE = 0.002;
 
 const int CYCLE_MOVEMENT = 0;
 const int CYCLE_TURN     = 1;
+const int CYCLE_MOUTH    = 2;
 
 #define CONTROL_STEP2 1
 #define CONTROL_STEP3 2
@@ -27,10 +28,6 @@ struct TServo {
 	float	angle;
 };
 
-struct TWormStep {
-	float	motors[NUM_MOTORS];
-};
-
 struct TPoly4 {
 	int servo;
 	int s;
@@ -40,8 +37,6 @@ struct TPoly4 {
 struct TState {
 	int num;
 	int servoPoly[7];
-	int numTurnServos;
-	int turnServo[7];
 };
 
 struct TServoControl {
@@ -50,15 +45,12 @@ struct TServoControl {
 	int			runtime_state;
 	float		runtime_pause;
 	TServo		servos[16];
-	int			numSteps;
-	int			currentStep;
 	float		pause_rate;
 	float		stepSize;
 	float		currentTurn;
 	float		nextTurn;
 	int			currentState;
 	int			currentCycle;
-	float		currentCurve;
 	int			mouthState;
 	int			submitMouthState;
 	int 		numPoly;
@@ -67,7 +59,6 @@ struct TServoControl {
 	int			numTurnStates;
 	TState		turnStates[NUM_STATES];
 	TPoly4		poly[NUM_POLY];
-	TWormStep	steps[MAX_STEPS];
 };
 
 int initServos(TServoControl* control);

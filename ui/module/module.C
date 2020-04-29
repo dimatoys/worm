@@ -17,7 +17,6 @@
 
 int initServos(TServoControl* control) {
 	
-	control->currentStep = 0;
 	control->runtime_thread = NULL;
 	
 #ifdef RASPBERRY
@@ -80,18 +79,17 @@ float updateState(TServoControl* control) {
 	
 	printf("updateState: cycle=%d state=%d\n", (int)cycle, (int)state);
 	
-	if (state == 0) {
-		//((TServoControl*)control)->currentTurn = ((TServoControl*)control)->nextTurn;
-		//printf("Turn updated to %f\n", ((TServoControl*)control)->currentTurn);
-
-		if (control->submitMouthState != control->mouthState) {
-			maxDiff = setServoAngle(control, 6, control->submitMouthState == 1 ? 90 : -90);
-			control->mouthState = control->submitMouthState;
-		}
-	}
-
 	switch(cycle) {
 	case CYCLE_MOVEMENT:
+		if (state < 0) {
+			state = control->numStates - 1;
+			control->currentState = state;
+		} else {
+			if (state >= control->numStates) {
+				state = 0;
+				control->currentState = state;
+			}
+		}
 		for (int i = 0; i < control->states[state].num; ++i) {
 			auto diff = setMuscleValue(control, control->states[state].servoPoly[i], control->stepSize);
 			if (diff > maxDiff) {
@@ -100,22 +98,28 @@ float updateState(TServoControl* control) {
 		}
 		break;
 	case CYCLE_TURN:
+		if (state < 0) {
+			state = control->numTurnStates - 1;
+			control->currentState = state;
+		} else {
+			if (state >= control->numTurnStates) {
+				state = 0;
+				control->currentState = state;
+			}
+		}
 		for (int i = 0; i < control->turnStates[state].num; ++i) {
-			auto diff = setMuscleValue(control, control->turnStates[state].servoPoly[i], control->currentCurve);
+			auto diff = setMuscleValue(control, control->turnStates[state].servoPoly[i], control->currentTurn);
 			if (diff > maxDiff) {
 				maxDiff = diff;
 			}
 		}
 		break;
+	case CYCLE_MOUTH:
+		control->currentState = 0;
+		maxDiff = setServoAngle(control, 6, control->submitMouthState == 1 ? 90 : -90);
+		
+		break;
 	}
-/*
-	for (int i = 0; i < control->states[state].numTurnServos; ++i) {
-		auto diff = setMuscleValue(control, control->states[state].turnServo[i], control->currentTurn);
-		if (diff > maxDiff) {
-			maxDiff = diff;
-		}
-	}
-*/
 	return maxDiff;
 }
 
@@ -136,12 +140,22 @@ void* runtimeMain(void* control) {
 				//printf("idle %ld.%09ld\n", (long)ts.tv_sec, ts.tv_nsec);
 				((TServoControl*)control)->runtime_pause = RUNTIME_DEFAULT_IDLE_PAUSE;
 				break;
-			case RUNTIME_STATE_MOVE_FORWARD: {
-				int newState = ((TServoControl*)control)->currentState + 1;
-				if (newState >= ((TServoControl*)control)->numStates) {
-					newState = 0;
+			case RUNTIME_STATE_MOVE_FORWARD: {				
+				if (((TServoControl*)control)->currentState == 0) {
+					if (((TServoControl*)control)->mouthState != ((TServoControl*)control)->submitMouthState) {
+						((TServoControl*)control)->currentCycle = CYCLE_MOUTH;
+						((TServoControl*)control)->mouthState = ((TServoControl*)control)->submitMouthState;
+					} else {
+						if (((TServoControl*)control)->nextTurn != 0) {
+							((TServoControl*)control)->currentCycle = CYCLE_TURN;
+							((TServoControl*)control)->currentTurn = ((TServoControl*)control)->nextTurn;
+						} else {
+							((TServoControl*)control)->currentCycle = CYCLE_MOVEMENT;
+						}
+					}
 				}
-				((TServoControl*)control)->currentState = newState;
+				
+				((TServoControl*)control)->currentState++;
 				float move = updateState((TServoControl*)control);
 				((TServoControl*)control)->runtime_pause = move * ((TServoControl*)control)->pause_rate;
 				//printf("move to state: %d move=%f sleep=%f stepsize=%f\n", newState, move, ((TServoControl*)control)->runtime_pause,((TServoControl*)control)->stepSize);

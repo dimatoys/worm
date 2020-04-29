@@ -213,11 +213,11 @@ $(function() {
 	})
 
 	$("#worm_mouth_open").click(function(){
-		$.getJSON( "/worm/mouth/open", function(data) {})
+		$.getJSON( "/worm/mouth/open", refresh_motors)
 	})
 
 	$("#worm_mouth_close").click(function(){
-		$.getJSON( "/worm/mouth/close", function(data) {})
+		$.getJSON( "/worm/mouth/close", refresh_motors)
 	})
 
 	$.getJSON( "/worm/getcontrolstates" ,function( data ) {
@@ -296,8 +296,26 @@ $(function() {
 	$("#set_turn").click(function(){
 		$("#turn_slider").slider('value', $("#turn").val());
 	})
+	$("#set_turn_m20").click(function(){
+		$("#turn_slider").slider('value', -20);
+	})
+	$("#set_turn_m15").click(function(){
+		$("#turn_slider").slider('value', -15);
+	})
+	$("#set_turn_m12").click(function(){
+		$("#turn_slider").slider('value', -12);
+	})
 	$("#set_turn_0").click(function(){
 		$("#turn_slider").slider('value', 0);
+	})
+	$("#set_turn_12").click(function(){
+		$("#turn_slider").slider('value', 12);
+	})
+	$("#set_turn_15").click(function(){
+		$("#turn_slider").slider('value', 15);
+	})
+	$("#set_turn_20").click(function(){
+		$("#turn_slider").slider('value', 20);
 	})
 })
 
@@ -345,7 +363,13 @@ $(document).ready(function() {
 					<div id="turn_slider"></div>
 					<input id="turn" value="0">
 					<button id="set_turn">Set</button>
+					<button id="set_turn_m20">-20</button>
+					<button id="set_turn_m15">-15</button>
+					<button id="set_turn_m12">-12</button>
 					<button id="set_turn_0">Set to 0</button>
+					<button id="set_turn_12">12</button>
+					<button id="set_turn_15">15</button>
+					<button id="set_turn_20">20</button>
 				</td>
 			</tr>
 		<table>

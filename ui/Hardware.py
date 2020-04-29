@@ -17,9 +17,6 @@ class TServo(Structure):
 		self.mid = int(vmid)
 		self.max = int(vmax)
 
-class TWormStep(Structure):
-	_fields_ = [("motors", c_float * 4)]
-
 class TPoly4(Structure):
 	_fields_ = [("servo", c_int),
 	            ("s", c_int),
@@ -40,9 +37,7 @@ class TPoly4(Structure):
 
 class TState(Structure):
 	_fields_ = [("num", c_int),
-				("servoPoly", c_int * 7),
-				("numTurnServos", c_int),
-				("servoTurn", c_int * 7)]
+				("servoPoly", c_int * 7)]
 
 class TServoControl(Structure):
 	_fields_ = [("hardware", c_void_p),
@@ -50,15 +45,12 @@ class TServoControl(Structure):
 				("runtime_state", c_int),
 				("runtime_pause", c_float),
 				("servos", TServo * 16),
-				("numSteps", c_int),
-				("currentStep", c_int),
 				("pause_rate", c_float),
 				("stepSize", c_float),
 				("currentTurn", c_float),
 				("nextTurn", c_float),
 				("currentState", c_int),
 				("currentCycle", c_int),
-				("currentCurve", c_float),
 				("mouthState", c_int),
 				("submitMouthState", c_int),
 				("NumPoly", c_int),
@@ -66,8 +58,7 @@ class TServoControl(Structure):
 				("states", TState * 30),
 				("NumTurnStates", c_int),
 				("turnStates", TState * 30),
-				("poly", TPoly4 * 100),
-				("steps", TWormStep * 50)]
+				("poly", TPoly4 * 100)]
 
 	def __init__(self, module, params, logger):
 		self.Logger = logger
@@ -105,7 +96,6 @@ class TServoControl(Structure):
 		self.stepSize = 100
 		self.currentTurn = 0
 		self.nextTurn = 0
-		self.currentCurve = 0
 		self.mouthState = 0
 		self.submitMouthState = 0
 
@@ -166,7 +156,7 @@ class TServoControl(Structure):
 			self.currentCycle = CYCLES[mtype]
 			self.currentState = self.stateMap[mtype][id]["id"]
 			if mtype == "turn":
-				self.currentCurve = self.nextTurn
+				self.currentTurn = self.nextTurn
 			self.module.updateState(byref(self))
 			return 0
 		else:
