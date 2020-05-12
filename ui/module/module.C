@@ -10,14 +10,32 @@
 #include <sys/select.h>
 
 #ifdef RASPBERRY
+
+#define TOF
+//#define VL
+
+
+
 #include <unistd.h>
 #include "bcm2835.h"
 #include "pca9685.h"
+
+#ifdef TOF
+#include "tof.h"
 #endif
+
+
+#ifdef VL
+#include "VL53L0X.hpp"
+#endif
+
+#endif
+
 
 int initServos(TServoControl* control) {
 	
 	control->runtime_thread = NULL;
+	control->sensor = NULL;
 	
 #ifdef RASPBERRY
 	if (getuid() != 0) {
@@ -127,9 +145,23 @@ void setTurn(TServoControl* control, float angle) {
 	control->nextTurn = angle;
 }
 
-void* runtimeMain(void* control) {
+void pauseSec(float sec) {
 	struct timespec  sleepTime;
-	sleepTime.tv_sec = 0;
+	sleepTime.tv_sec = (time_t)sec;
+	sleepTime.tv_nsec = (long)((sec - sleepTime.tv_sec) * 1000000000L);
+	int r =clock_nanosleep(CLOCK_MONOTONIC, 0, &sleepTime, NULL);
+	if (r < 0) {
+		printf("sec=%d, nsec=%ld r=%d errno=%d\n", (int)sleepTime.tv_sec, sleepTime.tv_nsec, r, (int)errno);
+	}
+}
+
+void pauseAngle(TServoControl* control, float angle) {
+	pauseSec(angle * control->pause_rate);
+}
+
+void* runtimeMain(void* control) {
+	//struct timespec  sleepTime;
+	//sleepTime.tv_sec = 0;
 
 	struct timespec ts;
 
@@ -177,11 +209,12 @@ void* runtimeMain(void* control) {
 				printf("Incorrect stae: %d, switching to idle\n", ((TServoControl*)control)->runtime_state);
 				((TServoControl*)control)->runtime_state = RUNTIME_STATE_IDLE;
 		}
-		sleepTime.tv_nsec = (long)(((TServoControl*)control)->runtime_pause * 1000000000L);
-		int r =clock_nanosleep(CLOCK_MONOTONIC, 0, &sleepTime, NULL);
-		if (r < 0) {
-			printf("sec=%d, nsec=%ld r=%d errno=%d\n", (int)sleepTime.tv_sec, sleepTime.tv_nsec, r, (int)errno);
-		}
+		//sleepTime.tv_nsec = (long)(((TServoControl*)control)->runtime_pause * 1000000000L);
+		//int r =clock_nanosleep(CLOCK_MONOTONIC, 0, &sleepTime, NULL);
+		//if (r < 0) {
+		//	printf("sec=%d, nsec=%ld r=%d errno=%d\n", (int)sleepTime.tv_sec, sleepTime.tv_nsec, r, (int)errno);
+		//}
+		pauseSec(((TServoControl*)control)->runtime_pause);
 	}
 	return NULL;
 }
@@ -219,3 +252,127 @@ int stopRuntime(TServoControl* control) {
 		return -2;
 	}
 }
+
+int initRangeFinder(TServoControl* control) {
+#ifdef RASPBERRY
+
+#ifdef TOF
+  	int bLongRangeMode = 0;
+ 
+	int status = tofInit(1, 0x29, bLongRangeMode);
+	if (status != 1) {
+		return -1; // problem - quit
+	}
+	printf("VL53L0X device successfully opened.\n");
+#endif
+
+#ifdef VL
+	VL53L0X* sensor = new VL53L0X();
+	sensor->initialize();
+	//sensor->setTimeout(200);
+/*
+	#ifdef LONG_RANGE
+	
+	// Lower the return signal rate limit (default is 0.25 MCPS)
+	sensor->setSignalRateLimit(0.1);
+
+	// Increase laser pulse periods (defaults are 14 and 10 PCLKs)
+	sensor->setVcselPulsePeriod(VcselPeriodPreRange, 18);
+	sensor>setVcselPulsePeriod(VcselPeriodFinalRange, 14);
+
+	#endif
+
+	#if defined HIGH_SPEED
+
+	// Reduce timing budget to 20 ms (default is about 33 ms)
+	sensor->setMeasurementTimingBudget(20000);
+
+	#elif defined HIGH_ACCURACY
+
+	// Increase timing budget to 200 ms
+	sensor->setMeasurementTimingBudget(200000);
+
+	#endif
+*/
+	control->sensor = sensor;
+#endif
+
+#endif
+
+	control->R = 262;
+	control->S = 80;
+
+	return 0;
+}
+
+
+int readDistance(TServoControl* control) {
+#ifdef RASPBERRY
+	
+#ifdef TOF
+	return tofReadDistance();
+#endif
+
+#ifdef VL
+	uint16_t distance = ((VL53L0X*)control->sensor)->readRangeSingleMillimeters();
+	return ((VL53L0X*)control->sensor)->timeoutOccurred() ? -1 : distance;
+#endif
+
+#else
+	return 0;
+#endif
+}
+
+void HScan2(TServoControl* control, float angle0, float angle1, float from2, float to2, float step2, float prePause, float pauseMove) {
+
+	auto current = from2;
+	
+	auto pause1 = setServoAngle(control, 1, angle1);
+	auto pause0 = setServoAngle(control, 0, angle0);
+	
+	pauseAngle(control, pause1 > pause0 ? pause1 : pause0);
+	pauseAngle(control, setServoAngle(control, 2, current));
+
+	pauseSec(prePause);
+	control->num_measurements = 0;
+	
+	while (current <= to2) {
+		control->measurements[control->num_measurements++] = readDistance(control);
+
+		current += step2;
+		pauseAngle(control, setServoAngle(control, 2, current));
+		
+		if (pauseMove != 0) {
+			pauseSec(pauseMove);
+		}
+	}
+
+	current = from2;
+	int i = 0;
+	while (current <= to2) {
+		double a = current * M_PI / 180.0;
+		auto sa = sin(a);
+		auto ca = cos(a);
+		auto d1 = control->measurements[i];
+		
+		auto m = &control->sobj[i];
+		m->x = (float)((control->R + d1) * sa - control->S * ca);
+		m->y = (float)((control->R + d1) * ca + control->S * sa);
+
+		++i;
+		current += step2;
+	}
+
+	pauseAngle(control, setServoAngle(control, 2, 0));
+	pauseAngle(control, setServoAngle(control, 0, 0));
+	pauseAngle(control, setServoAngle(control, 1, -3));
+}
+
+
+/*
+-15/10/-10/10/0.5/0.2/0.1
+
+-15/10/-10/10/1/0.2/0.1
+
+
+* */

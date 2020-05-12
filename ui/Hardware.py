@@ -39,6 +39,10 @@ class TState(Structure):
 	_fields_ = [("num", c_int),
 				("servoPoly", c_int * 7)]
 
+class TSObj(Structure):
+	_fields_ = [("x", c_float),
+	            ("y", c_float)]
+
 class TServoControl(Structure):
 	_fields_ = [("hardware", c_void_p),
 				("runtime_thread", c_void_p),
@@ -58,7 +62,13 @@ class TServoControl(Structure):
 				("states", TState * 30),
 				("NumTurnStates", c_int),
 				("turnStates", TState * 30),
-				("poly", TPoly4 * 100)]
+				("poly", TPoly4 * 100),
+				("sensor", c_void_p),
+				("R", c_float),
+				("S", c_float),
+			    ("num_measurements", c_int),
+				("measurements", c_int * 200),
+				("sobj", TSObj * 200)];
 
 	def __init__(self, module, params, logger):
 		self.Logger = logger
@@ -78,6 +88,11 @@ class TServoControl(Structure):
 		self.module.stopRuntime.argtypes = [POINTER(TServoControl)]
 		self.module.stopRuntime.restype  = c_int
 
+		self.module.initRangeFinder.argtypes = [POINTER(TServoControl)]
+		self.module.initRangeFinder.restype  = c_int
+		self.module.readDistance.argtypes = [POINTER(TServoControl)]
+		self.module.readDistance.restype  = c_int
+		self.module.HScan2.argtypes = [POINTER(TServoControl), c_float, c_float, c_float, c_float, c_float, c_float, c_float]
 
 		self.active = []
 		for s in range(16):
@@ -110,6 +125,10 @@ class TServoControl(Structure):
 		status = self.module.initServos(byref(self))
 		if status != 0:
 			raise Exception("servo status=%d" % status)
+
+		self.RFstatus = self.module.initRangeFinder(byref(self))
+		if self.RFstatus != 0:
+			self.Logger.debug("range finder status=%s" % status)
 
 		status = self.module.initRuntime(byref(self))
 		if status != 0:
@@ -200,20 +219,6 @@ class TServoControl(Structure):
 						self.turnStates[self.NumTurnStates].num = stateServo
 
 					turnServo = 0
-					"""
-					while True:
-						prefix = "worm.%s.%s.turn.%c" % (mtype, stateId, ord('a') + turnServo)
-						if prefix + ".servo" in params:
-							self.poly[self.NumPoly].load(params, prefix)
-							if mtype == "state":
-								self.states[self.NumStates].servoTurn[turnServo] = self.NumPoly
-							else:
-								self.turnStates[self.NumTurnStates].servoTurn[turnServo] = self.NumPoly
-							self.NumPoly += 1
-							turnServo += 1
-						else:
-							break
-					"""
 					if mtype == "state":
 						self.states[self.NumStates].numTurnServos = turnServo
 						self.stateMap[mtype][stateId] = {"id": self.NumStates}
@@ -299,4 +304,19 @@ class Hardware(HardwareStub):
 
 	def wormSetMouthState(self, state):
 		self.ServoControl.submitMouthState = state
-
+		
+	def readDistance(self):
+		return self.ServoControl.module.readDistance(byref(self.ServoControl))
+		
+	def HScan2(self, angle0, angle1, from2, to2, step2, prePause, movePause):
+		from2 = float(from2)
+		step2 = float(step2)
+		self.ServoControl.module.HScan2(byref(self.ServoControl), float(angle0), float(angle1), float(from2), float(to2), float(step2), float(prePause), float(movePause))
+		
+		result = []
+		for i in range(self.ServoControl.num_measurements):
+			result.append({"distance": self.ServoControl.measurements[i],
+			               "angle": from2 + i * step2,
+			               "x": self.ServoControl.sobj[i].x,
+			               "y": self.ServoControl.sobj[i].y})
+		return result

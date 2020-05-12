@@ -92,6 +92,16 @@ def worm_get_control_states():
 	states = g_Hardware.wormGetStates()
 	return Response(json.dumps(states), content_type='text/plain; charset=utf-8')
 
+@app.route('/rangefinder/readDistance')
+def getDistance():
+	distance = g_Hardware.readDistance()
+	return Response(json.dumps(distance), content_type='text/plain; charset=utf-8')
+
+@app.route('/hscan2/<angle0>/<angle1>/<from2>/<to2>/<step2>/<prePause>/<movePause>')
+def HScan1(angle0, angle1, from2, to2, step2, prePause, movePause):
+	result = g_Hardware.HScan2(angle0, angle1, from2, to2, step2, prePause, movePause)
+	return Response(json.dumps(result), content_type='text/plain; charset=utf-8')
+
 if __name__ == "__main__":
 	if len(sys.argv) >= 2 and sys.argv[1] == "stub":
 		from HardwareStub import HardwareStub

@@ -172,12 +172,92 @@ function MotorControl(parent, channel, vmin, vmid, vmax, value) {
 var wormStates = undefined
 var motors = undefined
 
+var timer_on = false
+
+function timer() {
+	if (timer_on) {
+		
+		$("#get_range").click()
+		
+		
+		setTimeout(timer, 300)
+	}
+}
+
+
 function refresh_motors(){
 	$.getJSON( "/getservos" ,function( data ) {
 		$.each(data, function(i, channel){
 			motors[i].Refresh(channel)
 		})
 	})
+}
+
+function TCanvas(canvas, xmin, xmax, ymin, ymax, dot_r) {
+
+	return {
+		canvas: canvas,
+		ctx: canvas.getContext('2d'),
+		
+		xmin: xmin - dot_r,
+		ymin: ymin - dot_r,
+		width: xmax - xmin + dot_r * 2,
+		height: ymax - ymin + dot_r * 2,
+		
+		dot_r: dot_r,
+		
+		cleanup: function() {
+			this.ctx.fillStyle="#FFFFFF"
+			this.ctx.fillRect(0,0, this.canvas.width, this.canvas.height)		
+		},
+		
+		getX: function(x) {
+			return (x-this.xmin) * this.canvas.width / this.width
+		},
+		
+		getY: function(y) {
+			return this.canvas.height - (y - this.ymin) * this.canvas.height / this.height
+		},
+		
+		drawDot: function(x, y, color) {
+			this.ctx.fillStyle = color
+			this.ctx.beginPath();
+			this.ctx.arc(this.getX(x), this.getY(y), this.dot_r, 0, 2 * Math.PI);
+			this.ctx.fill()
+		},
+		
+		drawLine: function(x1, y1, x2, y2, color, width) {
+			this.ctx.beginPath()
+			this.ctx.moveTo(this.getX(x1), this.getY(y1))
+			this.ctx.lineTo(this.getX(x2), this.getY(y2))
+			this.ctx.lineWidth = width
+			this.ctx.strokeStyle = color
+			this.ctx.stroke()
+		}
+	}
+}
+
+function draw_observation(x, y) {
+	xmin = 0
+	xmax = 0
+	ymin = 0
+	ymax = 0
+	for (i = 0; i < x.length; ++i) {
+		if (x[i] < xmin) { xmin = x[i] }
+		if (x[i] > xmax) { xmax = x[i] }
+		if (y[i] < ymin) { ymin = y[i] }
+		if (y[i] > ymax) { ymax = y[i] }
+	}
+	
+	da = TCanvas(document.getElementById('observation'), xmin, xmax, ymin, ymax, 5)
+	
+	da.drawLine(xmin,0,xmax,0,"#000000",1)
+	da.drawLine(0,ymin,0,ymax,"#000000",1)
+	da.drawDot(0,0,"#8080FF")
+	
+	for (i = 0; i < x.length; ++i) {
+		da.drawDot(x[i], y[i], "#FF8080")
+	}
 }
 
 $(function() {
@@ -317,6 +397,44 @@ $(function() {
 	$("#set_turn_20").click(function(){
 		$("#turn_slider").slider('value', 20);
 	})
+	
+	$("#get_range").click(function(){
+		$.getJSON( "/rangefinder/readDistance", function(data){
+			$("#range").text(data)
+		})
+	})
+	$("#run_range").click(function(){
+		timer_on = true
+		timer()
+	})
+	$("#stop_range").click(function(){
+		timer_on = false
+	})
+
+	$("#scan_run").click(function(){
+		$.getJSON( "/hscan2/" + $("#scan_spec").val(), function(data){
+			var table = $("#scan_result").html("")
+			var x = []
+			var y = []
+			$.each(data, function(i, measurement){
+				row = $("<tr/>").appendTo(table)
+				$("<td/>").text("(").appendTo(row)
+				$("<td/>").text(measurement.angle).appendTo(row)
+				$("<td/>").text(",").appendTo(row)
+				$("<td/>").text(measurement.distance).appendTo(row)
+				$("<td/>").text(",").appendTo(row)
+				$("<td/>").text(measurement.x).appendTo(row)
+				$("<td/>").text(",").appendTo(row)
+				$("<td/>").text(measurement.y).appendTo(row)
+				$("<td/>").text("),").appendTo(row)
+				
+				x.push(parseFloat(measurement.x))
+				y.push(parseFloat(measurement.y))
+			})
+			draw_observation(x,y)
+		})
+	})
+
 })
 
 $(document).ready(function() {
@@ -350,7 +468,7 @@ $(document).ready(function() {
 				</td>
 			</tr>
 			<tr>
-				<td>Step size</td>>
+				<td>Step size</td>
 				<td>
 					<div id="stepsize_slider"></div>
 					<input id="stepsize" value="0">
@@ -373,5 +491,30 @@ $(document).ready(function() {
 				</td>
 			</tr>
 		<table>
+		<h2>Range Finder</h2>
+		<table>
+			<tr>
+				<td><button id="get_range">GET</button></td>
+				<td id="range"></td>
+				<td><button id="run_range">RUN</button></td>
+				<td><button id="stop_range">STOP</button></td>
+			</tr>
+		</table>
+		<table>
+			<tr>
+				<td><input id="scan_spec"></td>
+				<td><button id="scan_run">SCAN</button></td>
+			</tr>
+		</table>
+		<table>
+			<tr>
+				<td>
+					<table id="scan_result"></table>
+				</td>
+				<td>
+					<canvas id="observation" width = "500" height = "500"></canvas>
+				</td>
+			</tr>
+		</table>
 	</body>
 </html>

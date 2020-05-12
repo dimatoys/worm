@@ -22,8 +22,8 @@ servo: servo.o pca9685.o
 win:  module.o
 	g++ -shared -o libhardwareModule.so $^
 
-rasp: module.o pca9685.o
+rasp: module.o pca9685.o tof.o
 	g++ -shared -L/usr/local/lib -o libhardwareModule.so $^ -lbcm2835
 
 clean:
-	rm -f *.o .so
+	rm -f *.o *.so

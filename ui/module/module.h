@@ -5,6 +5,8 @@ extern "C" {
 #define NUM_STATES 30
 #define NUM_POLY   100
 
+#define MAX_MEASUREMENTS 200
+
 const int RUNTIME_STATE_EXIT = 0;
 const int RUNTIME_STATE_IDLE = 1;
 const int RUNTIME_STATE_MOVE_FORWARD = 2;
@@ -39,26 +41,37 @@ struct TState {
 	int servoPoly[7];
 };
 
+struct TSObj {
+	float x;
+	float y;
+};
+
 struct TServoControl {
-	void*		hardware;
-	void*		runtime_thread;
-	int			runtime_state;
-	float		runtime_pause;
-	TServo		servos[16];
-	float		pause_rate;
-	float		stepSize;
-	float		currentTurn;
-	float		nextTurn;
-	int			currentState;
-	int			currentCycle;
-	int			mouthState;
-	int			submitMouthState;
-	int 		numPoly;
-	int			numStates;
-	TState		states[NUM_STATES];
-	int			numTurnStates;
-	TState		turnStates[NUM_STATES];
-	TPoly4		poly[NUM_POLY];
+	void*		 hardware;
+	void*		 runtime_thread;
+	int			 runtime_state;
+	float		 runtime_pause;
+	TServo		 servos[16];
+	float		 pause_rate;
+	float		 stepSize;
+	float		 currentTurn;
+	float		 nextTurn;
+	int			 currentState;
+	int			 currentCycle;
+	int			 mouthState;
+	int			 submitMouthState;
+	int 		 numPoly;
+	int			 numStates;
+	TState		 states[NUM_STATES];
+	int			 numTurnStates;
+	TState		 turnStates[NUM_STATES];
+	TPoly4		 poly[NUM_POLY];
+	void*		 sensor;
+	float		 R;
+	float		 S;
+	int		     num_measurements;
+	int 		 measurements[MAX_MEASUREMENTS];
+	TSObj		 sobj[MAX_MEASUREMENTS];
 };
 
 int initServos(TServoControl* control);
@@ -70,4 +83,7 @@ void setTurn(TServoControl* control, float angle);
 int initRuntime(TServoControl* control);
 int stopRuntime(TServoControl* control);
 
+int initRangeFinder(TServoControl* control);
+int readDistance(TServoControl* control);
+void HScan2(TServoControl* control, float angle0, float angle1, float from2, float to2, float step2, float prePause, float pauseMove);
 }
