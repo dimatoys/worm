@@ -16,9 +16,6 @@ build: clean
 shutdown:
 	ssh ${ACCOUNT} "sudo shutdown -h now"
 
-servo: servo.o pca9685.o
-	g++ $^ $(LDFLAGS) -L/usr/local/lib -lbcm2835 -o $@
-
 win:  module.o
 	g++ -shared -o libhardwareModule.so $^
 

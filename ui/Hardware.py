@@ -5,6 +5,9 @@ import re
 
 CYCLES = {"state":0, "turn":1}
 
+FLAGS_NO_FLAGS = 0
+FLAGS_ABS      = 1
+
 class TServo(Structure):
 	_fields_ = [("min", c_int),
 				("mid", c_int),
@@ -20,6 +23,7 @@ class TServo(Structure):
 class TPoly4(Structure):
 	_fields_ = [("servo", c_int),
 	            ("s", c_int),
+	            ("flags", c_int),
 	            ("k", c_float * 4)]
 
 	def load(self, params, prefix):
@@ -34,6 +38,13 @@ class TPoly4(Structure):
 					self.s = i
 					return
 			self.s = 4
+			self.flags = FLAGS_NO_FLAGS
+			flagsKey = "%s.flags" % prefix
+			if flagsKey in params:
+				flags = params[flagsKey]
+				if flags == "abs":
+					self.flags = FLAGS_ABS
+				
 
 class TState(Structure):
 	_fields_ = [("num", c_int),
@@ -57,6 +68,7 @@ class TServoControl(Structure):
 				("currentCycle", c_int),
 				("mouthState", c_int),
 				("submitMouthState", c_int),
+				("scanFlag", c_int),
 				("NumPoly", c_int),
 				("NumStates", c_int),
 				("states", TState * 30),
@@ -65,10 +77,24 @@ class TServoControl(Structure):
 				("poly", TPoly4 * 100),
 				("sensor", c_void_p),
 				("R", c_float),
-				("S", c_float),
+				("scan_angle_low_0", c_float),
+				("scan_angle_low_1", c_float),
+				("scan_angle_high_0", c_float),
+				("scan_angle_high_1", c_float),
+				("scan_from2", c_float),
+				("scan_to2", c_float),
+				("scan_pre_pause", c_float),
+				("scan_pause_move", c_float),
+				("scan_step2", c_float),
+				("scan_d", c_int),
+				("scan_min_conf", c_float),
+				("scan_decidion", c_float),
+				("scan_found_object", c_int),
+				("scan_decidion_progress", c_float),
+				("scan_distance", c_int),
 			    ("num_measurements", c_int),
 				("measurements", c_int * 200),
-				("sobj", TSObj * 200)];
+				("measurements2", c_float * 200)];
 
 	def __init__(self, module, params, logger):
 		self.Logger = logger
@@ -93,6 +119,8 @@ class TServoControl(Structure):
 		self.module.readDistance.argtypes = [POINTER(TServoControl)]
 		self.module.readDistance.restype  = c_int
 		self.module.HScan2.argtypes = [POINTER(TServoControl), c_float, c_float, c_float, c_float, c_float, c_float, c_float]
+		self.module.HScan3.argtypes = [POINTER(TServoControl)]
+		self.module.HScan4.argtypes = [POINTER(TServoControl)]
 
 		self.active = []
 		for s in range(16):
@@ -113,6 +141,7 @@ class TServoControl(Structure):
 		self.nextTurn = 0
 		self.mouthState = 0
 		self.submitMouthState = 0
+		self.scanFlag = 0
 
 		self.stateMap = {}
 		self.NumPoly = 0
@@ -126,6 +155,19 @@ class TServoControl(Structure):
 		if status != 0:
 			raise Exception("servo status=%d" % status)
 
+		self.R = 270
+		self.scan_angle_low_0 = -3
+		self.scan_angle_low_1 = 5
+		self.scan_angle_high_0 = -30
+		self.scan_angle_high_1 = 30
+		self.scan_from2 = -30
+		self.scan_to2 = 30
+		self.scan_pre_pause = 0.5
+		self.scan_pause_move = 0.1
+		self.scan_step2 = 1
+		self.scan_d = 15
+		self.scan_min_conf = 0.8
+		
 		self.RFstatus = self.module.initRangeFinder(byref(self))
 		if self.RFstatus != 0:
 			self.Logger.debug("range finder status=%s" % status)
@@ -315,8 +357,77 @@ class Hardware(HardwareStub):
 		
 		result = []
 		for i in range(self.ServoControl.num_measurements):
-			result.append({"distance": self.ServoControl.measurements[i],
-			               "angle": from2 + i * step2,
-			               "x": self.ServoControl.sobj[i].x,
-			               "y": self.ServoControl.sobj[i].y})
+			result.append({"distance": self.ServoControl.measurements[i] + self.ServoControl.R,
+			               "angle": from2 + i * step2})
 		return result
+
+	def HScan3(self):
+		self.ServoControl.module.HScan3(byref(self.ServoControl))
+		
+		measurements = []
+		measurements2 = []
+		for i in range(self.ServoControl.num_measurements):
+			measurements.append(self.ServoControl.measurements[i])
+			measurements2.append(self.ServoControl.measurements2[i])
+		return {"R": self.ServoControl.R,
+				"scan_angle_low_0": self.ServoControl.scan_angle_low_0,
+				"scan_angle_low_1": self.ServoControl.scan_angle_low_1,
+				"scan_angle_high_0": self.ServoControl.scan_angle_high_0,
+				"scan_angle_high_1": self.ServoControl.scan_angle_high_1,
+				"scan_from2": self.ServoControl.scan_from2,
+				"scan_to2": self.ServoControl.scan_to2,
+				"scan_pre_pause": self.ServoControl.scan_pre_pause,
+				"scan_pause_move": self.ServoControl.scan_pause_move,
+				"scan_step2": self.ServoControl.scan_step2,
+				"measurements": measurements,
+				"measurements2": measurements2}
+				
+	def HScan4(self):
+		self.ServoControl.module.HScan4(byref(self.ServoControl))
+		return self.getLastMeasurements()
+				
+	def getScanVars(self):
+		return {"R": self.ServoControl.R,
+				"scan_angle_low_0": self.ServoControl.scan_angle_low_0,
+				"scan_angle_low_1": self.ServoControl.scan_angle_low_1,
+				"scan_angle_high_0": self.ServoControl.scan_angle_high_0,
+				"scan_angle_high_1": self.ServoControl.scan_angle_high_1,
+				"scan_from2": self.ServoControl.scan_from2,
+				"scan_to2": self.ServoControl.scan_to2,
+				"scan_pre_pause": self.ServoControl.scan_pre_pause,
+				"scan_pause_move": self.ServoControl.scan_pause_move,
+				"scan_step2": self.ServoControl.scan_step2,
+				"scan_d": self.ServoControl.scan_d,
+				"scan_min_conf": self.ServoControl.scan_min_conf,
+				"scan_decidion": self.ServoControl.scan_decidion,
+				"scan_found_object": self.ServoControl.scan_found_object}
+
+	def setScanVar(self, var, value):
+		exec("s.%s=%s" % (var, value), {'__builtins__': None}, {"s": self.ServoControl})
+		return "Ok"
+
+	def startScan(self):
+		self.ServoControl.scanFlag = 1
+		self.ServoControl.setState(2)
+		return "Ok"
+		
+	def getLastMeasurements(self):
+		measurements = []
+		measurements2 = []
+		for i in range(self.ServoControl.num_measurements):
+			measurements.append(self.ServoControl.measurements[i])
+			measurements2.append(self.ServoControl.measurements2[i])
+		return {"R": self.ServoControl.R,
+				"scan_angle_low_0": self.ServoControl.scan_angle_low_0,
+				"scan_angle_low_1": self.ServoControl.scan_angle_low_1,
+				"scan_from2": self.ServoControl.scan_from2,
+				"scan_to2": self.ServoControl.scan_to2,
+				"scan_pre_pause": self.ServoControl.scan_pre_pause,
+				"scan_pause_move": self.ServoControl.scan_pause_move,
+				"scan_d": self.ServoControl.scan_d,
+				"scan_min_conf": self.ServoControl.scan_min_conf,
+				"scan_decidion": self.ServoControl.scan_decidion,
+				"scan_found_object": self.ServoControl.scan_found_object,
+				"scan_step2": self.ServoControl.scan_step2,
+				"measurements": measurements,
+				"measurements2": measurements2}

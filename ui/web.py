@@ -98,8 +98,38 @@ def getDistance():
 	return Response(json.dumps(distance), content_type='text/plain; charset=utf-8')
 
 @app.route('/hscan2/<angle0>/<angle1>/<from2>/<to2>/<step2>/<prePause>/<movePause>')
-def HScan1(angle0, angle1, from2, to2, step2, prePause, movePause):
+def HScan2(angle0, angle1, from2, to2, step2, prePause, movePause):
 	result = g_Hardware.HScan2(angle0, angle1, from2, to2, step2, prePause, movePause)
+	return Response(json.dumps(result), content_type='text/plain; charset=utf-8')
+
+@app.route('/hscan3')
+def HScan3():
+	result = g_Hardware.HScan3()
+	return Response(json.dumps(result), content_type='text/plain; charset=utf-8')	
+
+@app.route('/hscan4')
+def HScan4():
+	result = g_Hardware.HScan4()
+	return Response(json.dumps(result), content_type='text/plain; charset=utf-8')	
+
+@app.route('/getscanvars')
+def getScanVars():
+	result = g_Hardware.getScanVars()
+	return Response(json.dumps(result), content_type='text/plain; charset=utf-8')
+
+@app.route('/setscanvar/<var>/<value>')
+def setScanVar(var, value):
+	result = g_Hardware.setScanVar(var, value)
+	return Response(json.dumps(result), content_type='text/plain; charset=utf-8')
+
+@app.route('/worm/startscan')
+def startScan():
+	result = g_Hardware.startScan()
+	return Response(json.dumps(result), content_type='text/plain; charset=utf-8')
+	
+@app.route('/worm/getlastmeasurements')
+def getLasMeasurements():
+	result = g_Hardware.getLastMeasurements()
 	return Response(json.dumps(result), content_type='text/plain; charset=utf-8')
 
 if __name__ == "__main__":
